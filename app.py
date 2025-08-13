@@ -1,118 +1,129 @@
-# crypto_dashboard.py
+# app.py
 import streamlit as st
-import pandas as pd
 import requests
-import datetime
-import yfinance as yf
-import plotly.graph_objects as go
+import pandas as pd
 
-# ---------------------------
-# Helper functions
-# ---------------------------
-def fetch_fear_greed():
-    """Fetch Fear & Greed Index"""
-    url = "https://api.alternative.me/fng/?limit=1"
-    try:
-        r = requests.get(url).json()
-        value = int(r['data'][0]['value'])
-        classification = r['data'][0]['value_classification']
-        return value, classification
-    except:
-        return None, None
-
-def fetch_crypto_price(symbol):
-    """Fetch latest crypto price from Yahoo Finance"""
-    try:
-        data = yf.download(symbol, period="7d", interval="1d")
-        return data
-    except:
-        return None
-
-def check_signal(value, threshold, comparison="lt"):
-    """Returns emoji signal based on comparison"""
-    if comparison == "lt":
-        return "🔴 NO" if value >= threshold else "🟢 YES"
-    elif comparison == "gt":
-        return "🔴 NO" if value <= threshold else "🟢 YES"
-    elif comparison == "ge":
-        return "🔴 NO" if value < threshold else "🟢 YES"
-
-# ---------------------------
-# Streamlit Layout
-# ---------------------------
-st.set_page_config(page_title="Crypto Market Dashboard", layout="wide")
-st.title("📊 Crypto Market Dashboard")
-
-# Fetch live data
-btc_price_data = fetch_crypto_price("BTC-USD")
-eth_price_data = fetch_crypto_price("ETH-USD")
-btc_price = btc_price_data['Close'][-1] if btc_price_data is not None else "N/A"
-eth_price = eth_price_data['Close'][-1] if eth_price_data is not None else "N/A"
-
-fear_value, fear_class = fetch_fear_greed()
-
-# ---------------------------
-# User Inputs or Fallbacks
-# ---------------------------
-btc_dominance = st.sidebar.number_input("BTC Dominance (%)", value=60.0)
-eth_btc = st.sidebar.number_input("ETH/BTC", value=0.05)
-
-# ---------------------------
-# Signals
-# ---------------------------
-st.subheader("⚡ Market Signals")
-signals = {
-    "BTC Dominance < 58.29%": check_signal(btc_dominance, 58.29),
-    "BTC Dominance < 54.66%": check_signal(btc_dominance, 54.66),
-    "ETH/BTC > 0.054": check_signal(eth_btc, 0.054, "gt"),
-    "Fear & Greed ≥ 80": check_signal(fear_value if fear_value else 0, 80, "ge")
-}
-
-st.table(pd.DataFrame.from_dict(signals, orient='index', columns=["Signal"]))
-
-# ---------------------------
-# Extra Indicators
-# ---------------------------
-st.subheader("📌 Extra Indicators")
-rsi_btc = 62.3
-rsi_eth = 73.3
-btc_sma_cross = "No cross"
-eth_sma_cross = "No cross"
-
-extra_data = {
-    "Indicator": ["BTC 50/200 SMA", "ETH 50/200 SMA", "BTC RSI(14)", "ETH RSI(14)", "Fear & Greed Index"],
-    "Value": [btc_sma_cross, eth_sma_cross, rsi_btc, rsi_eth, f"{fear_value} ({fear_class})" if fear_value else "N/A"],
-    "Note": ["", "", "Overbought" if rsi_btc>70 else "Normal", "Overbought" if rsi_eth>70 else "Normal", ""]
-}
-st.table(pd.DataFrame(extra_data))
-
-# ---------------------------
-# Interactive Charts
-# ---------------------------
-st.subheader("📈 BTC / ETH Price Charts (7d)")
-fig = go.Figure()
-if btc_price_data is not None:
-    fig.add_trace(go.Scatter(x=btc_price_data.index, y=btc_price_data['Close'], name='BTC', line=dict(color='orange')))
-if eth_price_data is not None:
-    fig.add_trace(go.Scatter(x=eth_price_data.index, y=eth_price_data['Close'], name='ETH', line=dict(color='blue')))
-fig.update_layout(xaxis_title="Date", yaxis_title="Price (USD)")
-st.plotly_chart(fig, use_container_width=True)
-
-# ---------------------------
-# Altcoin Rotation Suggestion
-# ---------------------------
-st.subheader("🔥 Altcoin Rotation Suggestion")
-rotation_text = "Stay in BTC / stablecoins. No alt season signal detected."
-if btc_dominance < 55 and eth_btc > 0.054 and rsi_eth < 70:
-    rotation_text = "Altcoins may outperform. Consider top 10 altcoins by market cap."
-st.info(rotation_text)
-
-# ---------------------------
-# Notes
-# ---------------------------
-st.subheader("💡 Notes & Tips")
+st.set_page_config(page_title="Crypto Alt Season Radar", layout="wide")
+st.title("📊 Crypto Alt Season Radar")
 st.markdown("""
-- RSI>70 may be overbought; RSI<30 oversold.  
-- Golden cross = bullish momentum; death cross = caution.  
-- Use BTC dominance and ETH/BTC trend to identify potential altcoin rotation.
+This app monitors **BTC, ETH, and Altcoin signals** to detect alt season conditions
+and guide rotation strategies.
 """)
+
+# ----------------------------
+# 1️⃣ Fetch BTC & ETH Data
+# ----------------------------
+st.header("1. BTC & ETH Signals")
+
+@st.cache_data(ttl=60)
+def get_coin_data(coin="bitcoin"):
+    url = f"https://api.coingecko.com/api/v3/coins/{coin}"
+    r = requests.get(url).json()
+    return r
+
+btc_data = get_coin_data("bitcoin")
+eth_data = get_coin_data("ethereum")
+
+btc_price = btc_data["market_data"]["current_price"]["usd"]
+eth_price = eth_data["market_data"]["current_price"]["usd"]
+btc_dominance = btc_data["market_data"]["market_cap_percentage"]["btc"]
+eth_btc_ratio = eth_price / btc_price
+
+st.metric("BTC Price ($)", btc_price)
+st.metric("ETH Price ($)", eth_price)
+st.metric("BTC Dominance (%)", btc_dominance)
+st.metric("ETH/BTC Ratio", round(eth_btc_ratio, 5))
+
+st.markdown("""
+**Explanation:**
+- **BTC Dominance:** Falling dominance usually signals alt season is starting.
+- **ETH/BTC Ratio:** Rising ETH/BTC indicates ETH is outperforming BTC — early alt season.
+""")
+
+# ----------------------------
+# 2️⃣ Fear & Greed Index
+# ----------------------------
+st.header("2. Fear & Greed Index")
+@st.cache_data(ttl=600)
+def get_fng():
+    url = "https://api.alternative.me/fng/?limit=1"
+    r = requests.get(url).json()
+    return r["data"][0]
+
+fng = get_fng()
+st.metric("Fear & Greed Index", f"{fng['value']} ({fng['value_classification']})")
+st.markdown("""
+**Explanation:**
+- **Extreme Fear (<25):** Early entry for alts.
+- **Extreme Greed (>70):** Take profits; altcoins may correct.
+""")
+
+# ----------------------------
+# 3️⃣ BTC Volatility (ATR) & Funding Rate (example placeholders)
+# ----------------------------
+st.header("3. BTC Volatility & Funding Rates")
+st.markdown("""
+- **BTC ATR (Volatility):** Lower ATR → safer environment for alt rotation.
+- **Funding Rates:** Negative funding (<0) → market shorts → good alt entries.
+""")
+st.info("Real-time ATR and funding rates would require exchange API (Binance/Bybit). Placeholder shown.")
+
+# ----------------------------
+# 4️⃣ Altcoin Rotation Strategy
+# ----------------------------
+st.header("4. Altcoin Rotation Strategy")
+
+rotation_table = pd.DataFrame({
+    "Tier": ["Tier 1: Large-Cap", "Tier 2: Mid-Cap", "Tier 3: Speculative / Low-Cap"],
+    "Example Coins": ["ETH, BNB, SOL", "MATIC, LDO, FTM", "DeFi / NFT early-stage coins"],
+    "Allocation (%)": ["40–50%", "30–40%", "10–20%"],
+    "Signal to Buy": [
+        "BTC consolidating + ETH/BTC rising",
+        "Mid-cap volume rising + BTC dominance falling",
+        "Early DeFi/NFT hype or news catalysts"
+    ]
+})
+
+st.table(rotation_table)
+st.markdown("""
+**Switching Strategy:**
+1. BTC consolidating + ETH/BTC rising → rotate 20–40% to Tier 1 alts.
+2. Rising volume in mid-caps → rotate 20–30% to Tier 2.
+3. BTC/ETH pullback but low dominance → hold alts, take partial profits if needed.
+4. BTC/ETH breakout → rotate profits back to BTC/ETH.
+""")
+
+# ----------------------------
+# 5️⃣ On-Chain & Social Signals (Placeholders)
+# ----------------------------
+st.header("5. On-Chain & Social Signals")
+st.markdown("""
+- **Exchange Flows:** Net outflows → safer for alts.
+- **Whale Activity:** Large movements → trend change signals.
+- **TVL & DeFi Activity:** Rising → early alt entries.
+- **Social Metrics:** Twitter, Reddit, Telegram hype → anticipate short-term moves.
+""")
+
+# ----------------------------
+# 6️⃣ Scoring System Example
+# ----------------------------
+st.header("6. Alt Season Scoring System (Simplified)")
+st.markdown("""
+Assign 1 point for each favorable signal:
+- BTC dominance falling
+- ETH/BTC rising
+- Fear & Greed extreme fear
+- BTC ATR low
+- Exchange outflows
+- Rising DeFi/NFT TVL
+- Altcoin volume surge
+
+**Score Interpretation:**
+- 0–2 → Avoid alts
+- 3–5 → Consider small allocation
+- 6–7 → Strong alt season → rotate portfolio
+""")
+
+st.success("✅ Use this scoring system to make systematic rotation decisions rather than guessing!")
+
+st.markdown("Made with ❤️ by Fabien Astre")
