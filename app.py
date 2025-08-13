@@ -289,37 +289,6 @@ alt_df['Suggested Action'] = '✅ Rotate In' if sig["rotate_to_alts"] else '⚠�
 st.dataframe(alt_df,use_container_width=True)
 st.success(f"Consider allocating ~{target_alt_alloc}% to top alts.") if sig["rotate_to_alts"] else st.info("No alt season signal detected.")
 
-# =========================
-# BTC / ETH Interactive Chart
-# =========================
-st.subheader("📈 BTC / ETH Interactive Chart")
-timeframe = st.selectbox("Timeframe", ["7d","30d","90d","180d","1y"])
-price_type = st.radio("Price Type", ["Closing Price","% Change"])
-show_ma = st.multiselect("Moving Averages", ["7-day","30-day","50-day","200-day"])
-compare_eth = st.checkbox("Compare ETH vs BTC", value=True)
-tf_days = {"7d":7,"30d":30,"90d":90,"180d":180,"1y":365}[timeframe]
-
-@st.cache_data(ttl=600)
-def get_historical_price(coin_id, days):
-    data = safe_request(f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart", params={"vs_currency":"usd","days":days,"interval":"daily"})
-    if data and "prices" in data:
-        df = pd.DataFrame(data["prices"], columns=["Timestamp","Price"])
-        df["Date"]=pd.to_datetime(df["Timestamp"],unit="ms")
-        df.set_index("Date", inplace=True)
-        df.drop("Timestamp", axis=1,inplace=True)
-        return df
-    return pd.DataFrame()
-
-btc_hist_view = get_historical_price("bitcoin", tf_days)
-eth_hist_view = get_historical_price("ethereum", tf_days)
-if price_type=="% Change":
-    btc_hist_view["Price"] = btc_hist_view["Price"].pct_change()*100
-    eth_hist_view["Price"] = eth_hist_view["Price"].pct_change()*100
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=btc_hist_view.index, y=btc_hist_view["Price"], name="BTC", mode="lines+markers"))
-if compare_eth:
-    fig.add_trace(go.Scatter(x=eth_hist_view.index, y=eth_hist_view["Price"], name="ETH", mode="lines+markers"))
-st.plotly_chart(fig,use_container_width=True)
 
 # =========================
 # Crypto News
