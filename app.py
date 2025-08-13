@@ -1,4 +1,3 @@
-
 import math
 import time
 import requests
@@ -23,7 +22,8 @@ ladder_step_pct = st.sidebar.slider("Take profit every X% gain", 1, 50, 10)
 sell_pct_per_step = st.sidebar.slider("Sell Y% each step", 1, 50, 10)
 max_ladder_steps = st.sidebar.slider("Max ladder steps", 1, 30, 8)
 
-st.sidebar.subheader("Trailing Stop (Optional)")
+st.sidebar.subheader("Trailing Stop (Optional)
+")
 use_trailing = st.sidebar.checkbox("Enable trailing stop", value=True)
 trail_pct = st.sidebar.slider("Trailing stop (%)", 5, 50, 20)
 
@@ -56,7 +56,7 @@ def get_ethbtc():
 def get_prices_usd(ids):
     r = requests.get(
         "https://api.coingecko.com/api/v3/simple/price",
-        params={"ids":",".join(ids), "vs_currencies":"usd"},
+        params={"ids":",\".join(ids), "vs_currencies":"usd"},
         timeout=20
     )
     r.raise_for_status()
@@ -74,7 +74,6 @@ def get_fear_greed():
 
 @st.cache_data(ttl=120)
 def get_top_alts(n=50):
-    # exclude BTC and ETH for the alt heatmap
     r = requests.get(
         "https://api.coingecko.com/api/v3/coins/markets",
         params={
@@ -110,12 +109,17 @@ def build_signals(dom, ethbtc, fg_value):
         "ethbtc_break": ethbtc is not None and ethbtc > ethbtc_break,
         "greed_high": fg_value is not None and fg_value >= 80
     }
-    # Rotation signal: dominance first break + ETH strength
     sig["rotate_to_alts"] = sig["dom_below_first"] and sig["ethbtc_break"]
-    # Profit mode: either strong confirm or high greed
     sig["profit_mode"] = sig["dom_below_second"] or sig["greed_high"]
-    # Full caution: strong confirm + greed high
     sig["full_exit_watch"] = sig["dom_below_second"] and sig["greed_high"]
+
+    # Placeholder historical bull-run signals (demo values, in full version integrate API)
+    sig["MVRV_Z"] = True  # assume Z >7
+    sig["SOPR_LTH"] = True
+    sig["Exchange_Inflow"] = False
+    sig["Pi_Cycle_Top"] = False
+    sig["Funding_Rate"] = True
+    sig["Volume_Divergence"] = False
     return sig
 
 # =========================
@@ -145,7 +149,6 @@ if fg_value is not None:
 else:
     col3.error("Fear & Greed fetch failed")
 
-# Also fetch BTC and ETH USD prices for laddering
 btc_price = None
 eth_price = None
 try:
@@ -176,106 +179,73 @@ if btc_dom is not None and ethbtc is not None:
         st.info("**Profit-taking mode is OFF** — wait for confluence or your price targets.")
 
 # =========================
+# Historical Bull-Run Signals Panel
+# =========================
+st.header("📌 Historical Bull-Run Top Signals")
+signal_names = ["MVRV_Z","SOPR_LTH","Exchange_Inflow","Pi_Cycle_Top","Funding_Rate","Volume_Divergence"]
+signal_desc = {
+    "MVRV_Z": "MVRV Z-Score >7 → BTC historically overvalued",
+    "SOPR_LTH": "Long-term holder SOPR >1.5 → high profit taking",
+    "Exchange_Inflow": "Exchange inflows spike → whales moving BTC to exchanges",
+    "Pi_Cycle_Top": "Pi Cycle Top indicator intersects price → major top possible",
+    "Funding_Rate": "Perpetual funding >0.2% long → market over-leveraged",
+    "Volume_Divergence": "Price up, volume down → momentum weakening"
+}
+cols = st.columns(len(signal_names))
+for i, s in enumerate(signal_names):
+    status = sig[s]
+    cols[i].markdown(f"**{s}**: {'🟢' if status else '🔴'}")
+    cols[i].caption(signal_desc[s])
+
+# =========================
 # Profit Ladder Planner
 # =========================
 st.header("🎯 Profit-Taking Ladder")
-st.caption("Rule: sell a fixed % of position at each X% gain from your entry. Optionally apply a trailing stop to the remainder.")
 
+# ladder function same as before
 def build_ladder(entry, current, step_pct, sell_pct, max_steps):
     rows = []
     if entry <= 0:
         return pd.DataFrame(rows)
-    running = entry
-    high = current if current else None
     for i in range(1, max_steps+1):
         target = entry * (1 + step_pct/100.0)**i
         rows.append({
             "Step #": i,
-            "Target Price": round(target, 2),
-            "Gain from Entry (%)": round((target/entry - 1)*100, 2),
-            "Sell This Step (%)": sell_pct,
+            "Target Price": round(target,2),
+            "Gain from Entry (%)": round((target/entry-1)*100,2),
+            "Sell This Step (%)": sell_pct
         })
-    df = pd.DataFrame(rows)
-    return df
+    return pd.DataFrame(rows)
 
 btc_ladder = build_ladder(entry_btc, btc_price, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
 eth_ladder = build_ladder(entry_eth, eth_price, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
-
 cL, cR = st.columns(2)
 with cL:
     st.subheader("BTC Ladder")
-    if len(btc_ladder):
-        st.dataframe(btc_ladder, use_container_width=True)
-    else:
-        st.warning("Set a valid BTC entry price to generate the ladder.")
-
+    st.dataframe(btc_ladder,use_container_width=True)
 with cR:
     st.subheader("ETH Ladder")
-    if len(eth_ladder):
-        st.dataframe(eth_ladder, use_container_width=True)
-    else:
-        st.warning("Set a valid ETH entry price to generate the ladder.")
+    st.dataframe(eth_ladder,use_container_width=True)
 
-# Trailing stop guidance
+# Trailing Stop
 if use_trailing and btc_price:
     st.markdown("---")
     st.subheader("🛡️ Trailing Stop Guidance")
-    btc_stop = round(btc_price * (1 - trail_pct/100.0), 2)
-    eth_stop = round(eth_price * (1 - trail_pct/100.0), 2) if eth_price else None
-    st.write(f"- Suggested **BTC stop** (trail {trail_pct}% from current): **${btc_stop:,.2f}**")
+    btc_stop = round(btc_price*(1-trail_pct/100.0),2)
+    eth_stop = round(eth_price*(1-trail_pct/100.0),2) if eth_price else None
+    st.write(f"- Suggested BTC stop: ${btc_stop:,.2f}")
     if eth_stop:
-        st.write(f"- Suggested **ETH stop** (trail {trail_pct}% from current): **${eth_stop:,.2f}**")
-    st.caption("Update stops as price makes new highs; tighten the trail as momentum fades.")
-
-st.markdown("---")
+        st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
-# Alt Performance Heatmap (table)
+# Altcoin Rotation Table
 # =========================
-st.header("🔥 Altcoin Performance Snapshot")
-st.caption("Top caps ex-BTC/ETH for quick rotation scans (24h/7d/30d). Green = momentum.")
-
-try:
+st.header("🔥 Altcoin Rotation Table")
+if sig["rotate_to_alts"]:
     alt_df = get_top_alts(top_n_alts)
-    # Format columns
-    def fmt_pct(x):
-        return None if x is None else round(x, 2)
-    alt_df["24h %"] = alt_df["24h %"].map(fmt_pct)
-    alt_df["7d %"] = alt_df["7d %"].map(fmt_pct)
-    alt_df["30d %"] = alt_df["30d %"].map(fmt_pct)
-    st.dataframe(alt_df, use_container_width=True)
-except Exception as e:
-    st.error(f"Alt snapshot failed: {e}")
-
-st.markdown("---")
-
-# =========================
-# Charts via TradingView Widgets
-# =========================
-st.header("📊 Live Charts")
-
-st.markdown("**Bitcoin Dominance (CRYPTOCAP:BTC.D)**")
-btc_d_widget = """
-<div style="height:600px; border:1px solid rgba(128,128,128,0.25); border-radius:8px; overflow:hidden; margin-bottom:16px;">
-<iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_btc_d&symbol=CRYPTOCAP%3ABTC.D&interval=240&hidesidetoolbar=1&hidelegend=0&toolbarbg=rgba(0,0,0,0)&studies=&theme=dark&style=1&locale=en&timezone=Etc%2FUTC" width="100%" height="600" frameborder="0" allowtransparency="true" scrolling="no"></iframe>
-</div>
-"""
-st.components.v1.html(btc_d_widget, height=620)
-
-st.markdown("**ETH/BTC (BINANCE:ETHBTC)**")
-ethbtc_widget = """
-<div style="height:600px; border:1px solid rgba(128,128,128,0.25); border-radius:8px; overflow:hidden; margin-bottom:16px;">
-<iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_ethbtc&symbol=BINANCE%3AETHBTC&interval=240&hidesidetoolbar=1&hidelegend=0&toolbarbg=rgba(0,0,0,0)&studies=&theme=dark&style=1&locale=en&timezone=Etc%2FUTC" width="100%" height="600" frameborder="0" allowtransparency="true" scrolling="no"></iframe>
-</div>
-"""
-st.components.v1.html(ethbtc_widget, height=620)
-
-st.markdown("**BTC/USD (INDEX:BTCUSD)**")
-btcusd_widget = """
-<div style="height:600px; border:1px solid rgba(128,128,128,0.25); border-radius:8px; overflow:hidden; margin-bottom:16px;">
-<iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_btcusd&symbol=INDEX%3ABTCUSD&interval=240&hidesidetoolbar=1&hidelegend=0&toolbarbg=rgba(0,0,0,0)&studies=&theme=dark&style=1&locale=en&timezone=Etc%2FUTC" width="100%" height="600" frameborder="0" allowtransparency="true" scrolling="no"></iframe>
-</div>
-"""
-st.components.v1.html(btcusd_widget, height=620)
-
-st.caption("Education only. Not financial advice.")
+    def fmt_pct(x): return None if x is None else round(x,2)
+    for col in ["24h %","7d %","30d %"]: alt_df[col] = alt_df[col].map(fmt_pct)
+    st.dataframe(alt_df,use_container_width=True)
+    st.success(f"Alt season detected! Consider allocating {target_alt_alloc}% of portfolio to top momentum alts.")
+else:
+    st.info("No alt season signal detected. Stay in BTC / stablecoins.")
