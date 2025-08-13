@@ -4,4 +4,3 @@ requests>=2.31.0
 yfinance>=0.2.32
 plotly>=5.21.0
 ta>=0.10.2
-streamlit-cache>=0.1.0
