@@ -1,10 +1,9 @@
-import math
 import time
 import requests
 import pandas as pd
+import numpy as np
 import streamlit as st
 import datetime
-import numpy as np
 import plotly.graph_objects as go
 import feedparser
 
@@ -16,13 +15,13 @@ st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", lay
 st.sidebar.header("Dashboard Parameters")
 
 st.sidebar.subheader("Dominance & ETH/BTC Triggers")
-dom_first = st.sidebar.number_input("BTC Dominance: 1st break (%)", 0.0, 100.0, 58.29, 0.01, format="%.2f")
-dom_second = st.sidebar.number_input("BTC Dominance: strong confirm (%)", 0.0, 100.0, 54.66, 0.01, format="%.2f")
-ethbtc_break = st.sidebar.number_input("ETH/BTC breakout level", 0.0, 1.0, 0.054, 0.001, format="%.3f")
+dom_first = st.sidebar.number_input("BTC Dominance: 1st break (%)", 0.0, 100.0, 58.29, 0.01)
+dom_second = st.sidebar.number_input("BTC Dominance: strong confirm (%)", 0.0, 100.0, 54.66, 0.01)
+ethbtc_break = st.sidebar.number_input("ETH/BTC breakout level", 0.0, 1.0, 0.054, 0.001)
 
 st.sidebar.subheader("Profit-Taking Plan")
-entry_btc = st.sidebar.number_input("Your BTC average entry ($)", 0.0, 1000000.0, 40000.0, 100.0)
-entry_eth = st.sidebar.number_input("Your ETH average entry ($)", 0.0, 1000000.0, 2000.0, 10.0)
+entry_btc = st.sidebar.number_input("BTC average entry ($)", 0.0, 1000000.0, 40000.0, 100.0)
+entry_eth = st.sidebar.number_input("ETH average entry ($)", 0.0, 1000000.0, 2000.0, 10.0)
 ladder_step_pct = st.sidebar.slider("Take profit every X% gain", 1, 50, 10)
 sell_pct_per_step = st.sidebar.slider("Sell Y% each step", 1, 50, 10)
 max_ladder_steps = st.sidebar.slider("Max ladder steps", 1, 30, 8)
@@ -33,12 +32,12 @@ trail_pct = st.sidebar.slider("Trailing stop (%)", 5, 50, 20)
 
 st.sidebar.subheader("Alt Rotation")
 target_alt_alloc = st.sidebar.slider("Target Alt allocation when signals fire (%)", 0, 100, 40)
-top_n_alts = st.sidebar.slider("Top N alts to scan (by market cap)", 10, 100, 50, 10)
+top_n_alts = st.sidebar.slider("Top N alts to scan", 10, 100, 50, 10)
 
-st.sidebar.caption("This dashboard pulls live data at runtime (CoinGecko & Alternative.me).")
+st.sidebar.caption("Live data from CoinGecko & Alternative.me. Refresh may take 5–10s.")
 
 # =========================
-# Safe Request with Retry
+# Safe API request with retry/backoff
 # =========================
 def safe_request(url, params=None, max_retries=5, backoff=2):
     for attempt in range(max_retries):
@@ -55,7 +54,7 @@ def safe_request(url, params=None, max_retries=5, backoff=2):
     return None
 
 # =========================
-# Data Fetchers with Cache
+# Data Fetching with Caching
 # =========================
 @st.cache_data(ttl=300)
 def get_global():
@@ -66,16 +65,14 @@ def get_global():
 
 @st.cache_data(ttl=300)
 def get_ethbtc():
-    data = safe_request("https://api.coingecko.com/api/v3/simple/price",
-                        params={"ids":"ethereum","vs_currencies":"btc"})
+    data = safe_request("https://api.coingecko.com/api/v3/simple/price", params={"ids":"ethereum","vs_currencies":"btc"})
     if data and "ethereum" in data:
         return float(data["ethereum"]["btc"])
     return None
 
 @st.cache_data(ttl=300)
 def get_prices_usd(ids):
-    data = safe_request("https://api.coingecko.com/api/v3/simple/price",
-                        params={"ids": ",".join(ids), "vs_currencies": "usd"})
+    data = safe_request("https://api.coingecko.com/api/v3/simple/price", params={"ids": ",".join(ids), "vs_currencies": "usd"})
     if data:
         return data
     return {i: {"usd": None} for i in ids}
@@ -115,11 +112,9 @@ def get_top_alts(n=50):
         "Mkt Cap ($B)": (x["market_cap"] or 0) / 1e9
     } for x in data])
 
-@st.cache_data(ttl=600)
-def get_rsi_macd_volume():
-    # Placeholder for RSI/MACD/Volume analysis
-    return 72, 0.002, False
-
+# =========================
+# Historical placeholders
+# =========================
 @st.cache_data(ttl=3600)
 def get_btc_dominance_history():
     dates = pd.date_range(end=datetime.datetime.today(), periods=90)
@@ -133,44 +128,43 @@ def get_ethbtc_history():
     return pd.DataFrame({"Date": dates, "ETHBTC": values})
 
 # =========================
-# Signal Builder
+# Profit Ladder
 # =========================
-def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
+def build_profit_ladder(entry_price, step_pct, sell_pct, max_steps):
+    ladder = []
+    for i in range(1, max_steps+1):
+        price_target = entry_price * (1 + step_pct/100 * i)
+        ladder.append({"Step": i, "Price Target": price_target, "% Gain": step_pct*i, "Sell %": sell_pct})
+    return pd.DataFrame(ladder)
+
+# =========================
+# Signals Builder
+# =========================
+def build_signals(dom, ethbtc, fg_value):
     sig = {
         "dom_below_first": dom is not None and dom < dom_first,
         "dom_below_second": dom is not None and dom < dom_second,
         "ethbtc_break": ethbtc is not None and ethbtc > ethbtc_break,
         "greed_high": fg_value is not None and fg_value >= 80,
-        "RSI_overbought": rsi is not None and rsi > 70,
-        "MACD_div": macd_div,
-        "Volume_div": vol_div
     }
     sig["rotate_to_alts"] = sig["dom_below_first"] and sig["ethbtc_break"]
-    sig["profit_mode"] = sig["dom_below_second"] or sig["greed_high"] or sig["RSI_overbought"] or sig["MACD_div"] or sig["Volume_div"]
-    sig["full_exit_watch"] = sig["dom_below_second"] and sig["greed_high"]
-    sig["MVRV_Z"] = True
-    sig["SOPR_LTH"] = True
-    sig["Exchange_Inflow"] = False
-    sig["Pi_Cycle_Top"] = False
-    sig["Funding_Rate"] = True
+    sig["profit_mode"] = sig["dom_below_second"] or sig["greed_high"]
     return sig
 
 # =========================
 # Dashboard Header
 # =========================
 col1, col2, col3, col4 = st.columns(4)
-
 g = get_global()
 btc_dom = float(g["data"]["market_cap_percentage"]["btc"]) if g else None
-ethbtc = get_ethbtc()
+ethbtc_val = get_ethbtc()
 fg_value, fg_label = get_fear_greed()
-rsi, macd_div, vol_div = get_rsi_macd_volume()
 prices = get_prices_usd(["bitcoin","ethereum"])
 btc_price = prices.get("bitcoin",{}).get("usd")
 eth_price = prices.get("ethereum",{}).get("usd")
 
 col1.metric("BTC Dominance (%)", f"{btc_dom:.2f}" if btc_dom else "N/A")
-col2.metric("ETH/BTC", f"{ethbtc:.6f}" if ethbtc else "N/A")
+col2.metric("ETH/BTC", f"{ethbtc_val:.6f}" if ethbtc_val else "N/A")
 col3.metric("Fear & Greed", f"{fg_value} ({fg_label})" if fg_value else "N/A")
 col4.metric("BTC / ETH ($)", f"{btc_price:,.0f} / {eth_price:,.0f}" if btc_price and eth_price else "N/A")
 st.markdown("---")
@@ -178,26 +172,44 @@ st.markdown("---")
 # =========================
 # Signals Panel
 # =========================
-if btc_dom and ethbtc:
-    sig = build_signals(btc_dom, ethbtc, fg_value, rsi, macd_div, vol_div)
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+sig = None
+if btc_dom and ethbtc_val:
+    sig = build_signals(btc_dom, ethbtc_val, fg_value)
+    st.subheader("⚡ Signals")
+    c1, c2, c3, c4 = st.columns(4)
     c1.markdown(f"**Dom < {dom_first:.2f}%**: {'🟢 YES' if sig['dom_below_first'] else '🔴 NO'}")
     c2.markdown(f"**Dom < {dom_second:.2f}%**: {'🟢 YES' if sig['dom_below_second'] else '🔴 NO'}")
     c3.markdown(f"**ETH/BTC > {ethbtc_break:.3f}**: {'🟢 YES' if sig['ethbtc_break'] else '🔴 NO'}")
     c4.markdown(f"**F&G ≥ 80**: {'🟢 YES' if sig['greed_high'] else '🔴 NO'}")
-    c5.markdown(f"**RSI > 70**: {'🟢 YES' if sig['RSI_overbought'] else '🔴 NO'}")
-    c6.markdown(f"**MACD Divergence**: {'🟢 YES' if sig['MACD_div'] else '🔴 NO'}")
-    c7.markdown(f"**Volume Divergence**: {'🟢 YES' if sig['Volume_div'] else '🔴 NO'}")
-
     if sig["profit_mode"]:
-        st.success("**Profit-taking mode is ON**")
+        st.success("Profit-taking mode is ON")
     else:
-        st.info("**Profit-taking mode is OFF**")
+        st.info("Profit-taking mode is OFF")
+else:
+    sig = {
+        "rotate_to_alts": False,
+        "profit_mode": False,
+        "dom_below_first": False,
+        "dom_below_second": False,
+        "ethbtc_break": False,
+        "greed_high": False
+    }
+
+# =========================
+# Profit Ladder Table
+# =========================
+st.subheader("💰 Profit Ladder")
+btc_ladder = build_profit_ladder(entry_btc, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
+eth_ladder = build_profit_ladder(entry_eth, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
+st.markdown("**BTC Ladder**")
+st.dataframe(btc_ladder)
+st.markdown("**ETH Ladder**")
+st.dataframe(eth_ladder)
 
 # =========================
 # Altcoin Table
 # =========================
-st.header("🔥 Top Altcoins & Rotation")
+st.subheader("🔥 Top Altcoins & Rotation")
 alt_df = get_top_alts(top_n_alts)
 if sig["rotate_to_alts"] and not alt_df.empty:
     alt_df['Suggested Action'] = '✅ Rotate In'
@@ -205,25 +217,78 @@ else:
     alt_df['Suggested Action'] = '⚠️ Wait'
 st.dataframe(alt_df, use_container_width=True)
 if sig["rotate_to_alts"]:
-    st.success(f"Alt season detected! Consider allocating {target_alt_alloc}% of portfolio into top momentum alts.")
+    st.success(f"Alt season detected! Consider allocating {target_alt_alloc}% into top momentum alts.")
 else:
-    st.info("No alt season signal detected. Watch these alts and wait for rotation conditions.")
+    st.info("No alt season signal detected. Stay in BTC / stablecoins.")
+
+# =========================
+# BTC / ETH Interactive Chart
+# =========================
+st.subheader("📈 BTC / ETH Interactive Chart")
+
+# Adjustable settings
+timeframe = st.selectbox("Timeframe", ["7d", "30d", "90d", "180d", "1y"])
+price_type = st.radio("Price Type", ["Closing Price", "% Change"])
+show_ma = st.multiselect("Moving Averages", ["7-day", "30-day", "50-day", "200-day"])
+compare_eth = st.checkbox("Compare ETH vs BTC", value=True)
+
+# Map timeframe to number of days
+tf_days = {"7d":7, "30d":30, "90d":90, "180d":180, "1y":365}[timeframe]
+
+# Fetch historical prices from CoinGecko
+@st.cache_data(ttl=600)
+def get_historical_price(coin_id, days):
+    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+    params = {"vs_currency": "usd", "days": days, "interval":"daily"}
+    data = safe_request(url, params)
+    if data and "prices" in data:
+        df = pd.DataFrame(data["prices"], columns=["Timestamp","Price"])
+        df["Date"] = pd.to_datetime(df["Timestamp"], unit="ms")
+        df.set_index("Date", inplace=True)
+        df.drop("Timestamp", axis=1, inplace=True)
+        return df
+    return pd.DataFrame()
+
+btc_hist = get_historical_price("bitcoin", tf_days)
+eth_hist = get_historical_price("ethereum", tf_days)
+
+# Compute % change if selected
+if price_type == "% Change":
+    btc_hist["Price"] = btc_hist["Price"].pct_change()*100
+    if compare_eth:
+        eth_hist["Price"] = eth_hist["Price"].pct_change()*100
+
+# Add moving averages
+for ma in show_ma:
+    days_ma = int(ma.split("-")[0])
+    btc_hist[ma] = btc_hist["Price"].rolling(days_ma).mean()
+    if compare_eth:
+        eth_hist[ma] = eth_hist["Price"].rolling(days_ma).mean()
+
+# Plot
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=btc_hist.index, y=btc_hist["Price"], name="BTC", line=dict(color="orange")))
+if compare_eth:
+    fig.add_trace(go.Scatter(x=eth_hist.index, y=eth_hist["Price"], name="ETH", line=dict(color="blue")))
+
+# Add MAs
+for ma in show_ma:
+    fig.add_trace(go.Scatter(x=btc_hist.index, y=btc_hist[ma], name=f"BTC {ma}", line=dict(dash="dot")))
+    if compare_eth:
+        fig.add_trace(go.Scatter(x=eth_hist.index, y=eth_hist[ma], name=f"ETH {ma}", line=dict(dash="dot")))
+
+fig.update_layout(title=f"BTC / ETH Price ({timeframe})", xaxis_title="Date", yaxis_title="Price" + (" (%)" if price_type=="% Change" else " ($)"))
+st.plotly_chart(fig, use_container_width=True)
 
 # =========================
 # Interactive Charts
 # =========================
-st.header("📊 Interactive Charts")
+st.subheader("📊 BTC Dominance & Altcoin Momentum")
 df_dom_hist = get_btc_dominance_history()
 fig_dom = go.Figure()
 fig_dom.add_trace(go.Scatter(x=df_dom_hist['Date'], y=df_dom_hist['BTC_Dominance'], mode='lines', name='BTC Dominance'))
 fig_dom.update_layout(title="BTC Dominance (Last 90 Days)", xaxis_title="Date", yaxis_title="BTC Dominance %")
 st.plotly_chart(fig_dom, use_container_width=True)
-
-df_ethbtc_hist = get_ethbtc_history()
-fig_ethbtc = go.Figure()
-fig_ethbtc.add_trace(go.Scatter(x=df_ethbtc_hist['Date'], y=df_ethbtc_hist['ETHBTC'], mode='lines', name='ETH/BTC'))
-fig_ethbtc.update_layout(title="ETH/BTC Ratio (Last 90 Days)", xaxis_title="Date", yaxis_title="ETH/BTC")
-st.plotly_chart(fig_ethbtc, use_container_width=True)
 
 fig_alt = go.Figure()
 if not alt_df.empty:
@@ -234,7 +299,7 @@ st.plotly_chart(fig_alt, use_container_width=True)
 # =========================
 # Live News Feed
 # =========================
-st.header("📰 Crypto News Feed")
+st.subheader("📰 Crypto News Feed")
 feed = feedparser.parse("https://cryptopanic.com/news/feed/")
 for entry in feed.entries[:10]:
     st.markdown(f"[{entry.title}]({entry.link})")
