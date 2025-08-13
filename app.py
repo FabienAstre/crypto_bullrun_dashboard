@@ -292,9 +292,17 @@ fig_alt.update_layout(title="Top Altcoin 7d Momentum", xaxis_title="Coin", yaxis
 st.plotly_chart(fig_alt, use_container_width=True)
 
 # =========================
-# Live Crypto News Feed
+# Live Crypto News Feed (fixed)
 # =========================
 st.subheader("📰 Crypto News Feed")
-feed = feedparser.parse("https://cryptopanic.com/news/feed/")
-for entry in feed.entries[:10]:
-    st.markdown(f"[{entry.title}]({entry.link})")
+
+try:
+    # Using CoinDesk RSS as a reliable source
+    feed = feedparser.parse("https://www.coindesk.com/arc/outboundfeeds/rss/")
+    if feed.entries:
+        for entry in feed.entries[:10]:
+            st.markdown(f"[{entry.title}]({entry.link})")
+    else:
+        st.info("No news available at the moment. Try refreshing in a few seconds.")
+except Exception as e:
+    st.warning(f"News feed could not be loaded: {e}")
