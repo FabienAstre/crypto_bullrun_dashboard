@@ -184,61 +184,7 @@ if btc_dom and ethbtc_val:
         st.success("Profit-taking mode is ON")
     else:
         st.info("Profit-taking mode is OFF")
-st.subheader("📈 BTC / ETH Interactive Chart")
 
-# Adjustable settings
-timeframe = st.selectbox("Timeframe", ["7d", "30d", "90d", "180d", "1y"])
-price_type = st.radio("Price Type", ["Closing Price", "% Change"])
-show_ma = st.multiselect("Moving Averages", ["7-day", "30-day", "50-day", "200-day"])
-compare_eth = st.checkbox("Compare ETH vs BTC", value=True)
-
-# Map timeframe to number of days
-tf_days = {"7d":7, "30d":30, "90d":90, "180d":180, "1y":365}[timeframe]
-
-# Fetch historical prices from CoinGecko
-@st.cache_data(ttl=600)
-def get_historical_price(coin_id, days):
-    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
-    params = {"vs_currency": "usd", "days": days, "interval":"daily"}
-    data = safe_request(url, params)
-    if data and "prices" in data:
-        df = pd.DataFrame(data["prices"], columns=["Timestamp","Price"])
-        df["Date"] = pd.to_datetime(df["Timestamp"], unit="ms")
-        df.set_index("Date", inplace=True)
-        df.drop("Timestamp", axis=1, inplace=True)
-        return df
-    return pd.DataFrame()
-
-btc_hist = get_historical_price("bitcoin", tf_days)
-eth_hist = get_historical_price("ethereum", tf_days)
-
-# Compute % change if selected
-if price_type == "% Change":
-    btc_hist["Price"] = btc_hist["Price"].pct_change()*100
-    if compare_eth:
-        eth_hist["Price"] = eth_hist["Price"].pct_change()*100
-
-# Add moving averages
-for ma in show_ma:
-    days_ma = int(ma.split("-")[0])
-    btc_hist[ma] = btc_hist["Price"].rolling(days_ma).mean()
-    if compare_eth:
-        eth_hist[ma] = eth_hist["Price"].rolling(days_ma).mean()
-
-# Plot
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=btc_hist.index, y=btc_hist["Price"], name="BTC", line=dict(color="orange")))
-if compare_eth:
-    fig.add_trace(go.Scatter(x=eth_hist.index, y=eth_hist["Price"], name="ETH", line=dict(color="blue")))
-
-# Add MAs
-for ma in show_ma:
-    fig.add_trace(go.Scatter(x=btc_hist.index, y=btc_hist[ma], name=f"BTC {ma}", line=dict(dash="dot")))
-    if compare_eth:
-        fig.add_trace(go.Scatter(x=eth_hist.index, y=eth_hist[ma], name=f"ETH {ma}", line=dict(dash="dot")))
-
-fig.update_layout(title=f"BTC / ETH Price ({timeframe})", xaxis_title="Date", yaxis_title="Price" + (" (%)" if price_type=="% Change" else " ($)"))
-st.plotly_chart(fig, use_container_width=True)
 # =========================
 # Profit Ladder Table
 # =========================
