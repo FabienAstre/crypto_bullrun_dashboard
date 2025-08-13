@@ -5,6 +5,8 @@ import pandas as pd
 import streamlit as st
 import datetime
 import numpy as np
+import plotly.graph_objects as go
+import feedparser
 
 st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", layout="wide")
 
@@ -103,8 +105,23 @@ def get_top_alts(n=50):
 
 @st.cache_data(ttl=120)
 def get_rsi_macd_volume():
-    # Placeholder: in a real version fetch BTC price history and compute RSI/MACD/Volume divergence
+    # Placeholder: compute RSI, MACD, Volume divergence from BTC data
     return 72, 0.002, False  # RSI, MACD hist divergence, volume divergence
+
+# Historical price for BTC Dominance (mock)
+@st.cache_data(ttl=3600)
+def get_btc_dominance_history():
+    # Here you can fetch historical BTC.D if available, using placeholder
+    dates = pd.date_range(end=datetime.datetime.today(), periods=90)
+    values = np.linspace(65, 55, 90)  # Example declining BTC.D
+    return pd.DataFrame({"Date": dates, "BTC_Dominance": values})
+
+# Historical price for ETH/BTC
+@st.cache_data(ttl=3600)
+def get_ethbtc_history():
+    dates = pd.date_range(end=datetime.datetime.today(), periods=90)
+    values = np.linspace(0.045, 0.055, 90)  # Example rising ETH/BTC
+    return pd.DataFrame({"Date": dates, "ETHBTC": values})
 
 # =========================
 # Signal Builder
@@ -271,3 +288,32 @@ elif active_signals >= 2:
     st.info("Moderate confluence. Partial profit-taking or watch closely.")
 else:
     st.success("Low confluence. Market still bullish, hold positions.")
+
+# =========================
+# Interactive Charts
+# =========================
+st.header("📊 Interactive Charts")
+df_dom = get_btc_dominance_history()
+fig_dom = go.Figure()
+fig_dom.add_trace(go.Scatter(x=df_dom['Date'], y=df_dom['BTC_Dominance'], mode='lines', name='BTC Dominance'))
+fig_dom.update_layout(title="BTC Dominance (Last 90 Days)", xaxis_title="Date", yaxis_title="BTC Dominance %")
+st.plotly_chart(fig_dom, use_container_width=True)
+
+df_ethbtc = get_ethbtc_history()
+fig_ethbtc = go.Figure()
+fig_ethbtc.add_trace(go.Scatter(x=df_ethbtc['Date'], y=df_ethbtc['ETHBTC'], mode='lines', name='ETH/BTC'))
+fig_ethbtc.update_layout(title="ETH/BTC Ratio (Last 90 Days)", xaxis_title="Date", yaxis_title="ETH/BTC")
+st.plotly_chart(fig_ethbtc, use_container_width=True)
+
+fig_alt = go.Figure()
+fig_alt.add_trace(go.Bar(x=alt_df['Coin'], y=alt_df['7d %'], name='7d Momentum', marker_color='green'))
+fig_alt.update_layout(title="Top Altcoin 7d Momentum", xaxis_title="Coin", yaxis_title="% Change")
+st.plotly_chart(fig_alt, use_container_width=True)
+
+# =========================
+# Live Crypto News Feed
+# =========================
+st.header("📰 Crypto News Feed")
+feed = feedparser.parse("https://cryptopanic.com/news/feed/")
+for entry in feed.entries[:10]:
+    st.markdown(f"[{entry.title}]({entry.link})")
