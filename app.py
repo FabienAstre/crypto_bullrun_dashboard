@@ -190,15 +190,21 @@ else:
     st.info("Profit-taking mode is OFF")
 
 # =========================
-# Profit Ladder Table
+# Combined Profit Ladder Table
 # =========================
-st.subheader("💰 Profit Ladder")
+st.subheader("💰 Combined Profit Ladder (BTC & ETH)")
+
 btc_ladder = build_profit_ladder(entry_btc, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
+btc_ladder["Coin"] = "BTC"
+
 eth_ladder = build_profit_ladder(entry_eth, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
-st.markdown("**BTC Ladder**")
-st.dataframe(btc_ladder)
-st.markdown("**ETH Ladder**")
-st.dataframe(eth_ladder)
+eth_ladder["Coin"] = "ETH"
+
+# Combine and reorder columns
+combined_ladder = pd.concat([btc_ladder, eth_ladder], ignore_index=True)
+combined_ladder = combined_ladder[["Coin", "Step", "Price Target", "% Gain", "Sell %"]]
+
+st.dataframe(combined_ladder)
 
 # =========================
 # Altcoin Table
