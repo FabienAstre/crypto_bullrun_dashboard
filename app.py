@@ -235,6 +235,15 @@ if use_trailing and btc_price:
     if eth_stop:
         st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
+st.header("🔥 Altcoin Watch Table")
+if sig["rotate_to_alts"]:
+    alt_df = get_top_alts(top_n_alts)  # existing function
+    alt_df["Suggested Action"] = ["✅ Rotate In" if x > 0 else "⚠️ Wait" for x in alt_df["7d %"]]
+    st.dataframe(alt_df, use_container_width=True)
+    st.success(f"Alt season detected! Consider rotating {target_alt_alloc}% of your portfolio into top momentum alts.")
+else:
+    st.info("No alt season detected. Stay in BTC / stablecoins.")
+
 # =========================
 # Altcoin Rotation Table
 # =========================
