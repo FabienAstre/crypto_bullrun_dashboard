@@ -99,9 +99,9 @@ def get_top_alts(n=50):
     } for x in data])
 
 # =========================
-# Signals
+# Signals & Indicators
 # =========================
-def build_signals(dom, ethbtc, fg_value):
+def build_signals(dom, ethbtc, fg_value, btc_price):
     sig = {
         "dom_below_first": dom is not None and dom < dom_first,
         "dom_below_second": dom is not None and dom < dom_second,
@@ -112,13 +112,20 @@ def build_signals(dom, ethbtc, fg_value):
     sig["profit_mode"] = sig["dom_below_second"] or sig["greed_high"]
     sig["full_exit_watch"] = sig["dom_below_second"] and sig["greed_high"]
 
-    # Placeholder historical bull-run signals
+    # Historical bull-run signals
     sig["MVRV_Z"] = True
     sig["SOPR_LTH"] = True
     sig["Exchange_Inflow"] = False
     sig["Pi_Cycle_Top"] = False
     sig["Funding_Rate"] = True
     sig["Volume_Divergence"] = False
+
+    # Technical indicators placeholders
+    sig["RSI_14d"] = btc_price > 0  # Example placeholder
+    sig["RSI_7d"] = btc_price > 0
+    sig["MACD_Divergence"] = False
+    sig["Volume_Divergence"] = False
+
     return sig
 
 # =========================
@@ -164,7 +171,7 @@ st.markdown("---")
 # Signal Panel
 # =========================
 if btc_dom is not None and ethbtc is not None:
-    sig = build_signals(btc_dom, ethbtc, fg_value)
+    sig = build_signals(btc_dom, ethbtc, fg_value, btc_price)
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.markdown(f"**Dom < {dom_first:.2f}%**: {'🟢 YES' if sig['dom_below_first'] else '🔴 NO'}")
     c2.markdown(f"**Dom < {dom_second:.2f}%**: {'🟢 YES' if sig['dom_below_second'] else '🔴 NO'}")
@@ -172,23 +179,23 @@ if btc_dom is not None and ethbtc is not None:
     c4.markdown(f"**F&G ≥ 80**: {'🟢 YES' if sig['greed_high'] else '🔴 NO'}")
     c5.markdown(f"**Rotate to Alts**: {'🟢 GO' if sig['rotate_to_alts'] else '🔴 WAIT'}")
 
-    if sig["profit_mode"]:
-        st.success("**Profit-taking mode is ON**")
-    else:
-        st.info("**Profit-taking mode is OFF**")
+    st.success(f"Profit-taking mode: {'ON' if sig['profit_mode'] else 'OFF'}")
 
 # =========================
-# Historical Bull-Run Signals Panel
+# Historical & Technical Bull-Run Signals Panel
 # =========================
-st.header("📌 Historical Bull-Run Top Signals")
-signal_names = ["MVRV_Z","SOPR_LTH","Exchange_Inflow","Pi_Cycle_Top","Funding_Rate","Volume_Divergence"]
+st.header("📌 Bull-Run & Technical Signals")
+signal_names = ["MVRV_Z","SOPR_LTH","Exchange_Inflow","Pi_Cycle_Top","Funding_Rate","Volume_Divergence","RSI_14d","RSI_7d","MACD_Divergence"]
 signal_desc = {
     "MVRV_Z": "MVRV Z-Score >7 → BTC historically overvalued",
     "SOPR_LTH": "Long-term holder SOPR >1.5 → high profit taking",
     "Exchange_Inflow": "Exchange inflows spike → whales moving BTC to exchanges",
     "Pi_Cycle_Top": "Pi Cycle Top indicator intersects price → major top possible",
     "Funding_Rate": "Perpetual funding >0.2% long → market over-leveraged",
-    "Volume_Divergence": "Price up, volume down → momentum weakening"
+    "Volume_Divergence": "Price up, volume down → momentum weakening",
+    "RSI_14d": "RSI 14d high → overbought, consider scaling out",
+    "RSI_7d": "RSI 7d high → short-term overbought",
+    "MACD_Divergence": "MACD histogram diverging → momentum weakening"
 }
 cols = st.columns(len(signal_names))
 for i, s in enumerate(signal_names):
@@ -215,34 +222,4 @@ def build_ladder(entry, current, step_pct, sell_pct, max_steps):
         })
     return pd.DataFrame(rows)
 
-btc_ladder = build_ladder(entry_btc, btc_price, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
-eth_ladder = build_ladder(entry_eth, eth_price, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
-cL, cR = st.columns(2)
-with cL:
-    st.subheader("BTC Ladder")
-    st.dataframe(btc_ladder,use_container_width=True)
-with cR:
-    st.subheader("ETH Ladder")
-    st.dataframe(eth_ladder,use_container_width=True)
-
-# Trailing Stop
-if use_trailing and btc_price:
-    st.markdown("---")
-    st.subheader("🛡️ Trailing Stop Guidance")
-    btc_stop = round(btc_price*(1-trail_pct/100.0),2)
-    eth_stop = round(eth_price*(1-trail_pct/100.0),2) if eth_price else None
-    st.write(f"- Suggested BTC stop: ${btc_stop:,.2f}")
-    if eth_stop:
-        st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
-
-# =========================
-# Altcoin Tables
-# =========================
-st.header("🔥 Altcoin Watch & Rotation Tables")
-alt_df = get_top_alts(top_n_alts)
-alt_df['Suggested Action'] = ['✅ Rotate In' if sig['rotate_to_alts'] and x>0 else '⚠️ Wait' for x in alt_df['7d %']]
-st.dataframe(alt_df, use_container_width=True)
-if sig['rotate_to_alts']:
-    st.success(f"Alt season detected! Consider allocating {target_alt_alloc}% of portfolio into top momentum alts.")
-else:
-    st.info("No alt season signal detected. Watch these alts and wait for rotation conditions.")
+btc
