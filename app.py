@@ -110,59 +110,8 @@ def get_top_alts(n=50):
         "Mkt Cap ($B)": (x.get("market_cap") or 0) / 1e9
     } for x in data])
 
-# Historical prices & volumes (for indicators)
-@st.cache_data(ttl=900)
-def get_market_chart(coin_id, days):
-    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
-    params = {"vs_currency": "usd", "days": days, "interval":"daily"}
-    data = safe_request(url, params)
-    if not data or "prices" not in data:
-        return pd.DataFrame()
-    dfp = pd.DataFrame(data["prices"], columns=["ts","price"])
-    dfv = pd.DataFrame(data.get("total_volumes", []), columns=["ts","volume"])
-    df = pd.merge(dfp, dfv, on="ts", how="left")
-    df["Date"] = pd.to_datetime(df["ts"], unit="ms")
-    df = df.set_index("Date").drop(columns=["ts"])
-    df = df.rename(columns={"price":"Price","volume":"Volume"})
-    return df
-
 # =========================
-# Helper calcs: SMA, RSI, Cross, Volume Spike
-# =========================
-def sma(series, window):
-    return series.rolling(window).mean()
-
-def rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
-    rs = gain / (loss.replace(0, np.nan))
-    rsi_val = 100 - (100 / (1 + rs))
-    return rsi_val
-
-def detect_cross(short_sma, long_sma):
-    if len(short_sma.dropna()) < 2 or len(long_sma.dropna()) < 2:
-        return None
-    diff_prev = short_sma.iloc[-2] - long_sma.iloc[-2]
-    diff_now  = short_sma.iloc[-1] - long_sma.iloc[-1]
-    if np.isnan(diff_prev) or np.isnan(diff_now):
-        return None
-    if diff_prev <= 0 and diff_now > 0:
-        return "golden"
-    if diff_prev >= 0 and diff_now < 0:
-        return "death"
-    return None
-
-def volume_spike_flag(vol_series, multiple=2.0, window=7):
-    if len(vol_series.dropna()) < window + 1:
-        return None, None, None
-    latest = vol_series.iloc[-1]
-    avg7 = vol_series.iloc[-window-1:-1].mean()
-    spike = latest >= multiple * avg7 if avg7 and not np.isnan(avg7) else False
-    return spike, latest, avg7
-
-# =========================
-# Profit Ladder
+# Helper calcs
 # =========================
 def build_profit_ladder(entry_price, step_pct, sell_pct, max_steps):
     ladder = []
@@ -171,9 +120,6 @@ def build_profit_ladder(entry_price, step_pct, sell_pct, max_steps):
         ladder.append({"Step": i, "Price Target": price_target, "% Gain": step_pct*i, "Sell %": sell_pct})
     return pd.DataFrame(ladder)
 
-# =========================
-# Signals Builder
-# =========================
 def build_signals(dom, ethbtc, fg_value):
     sig = {
         "dom_below_first": dom is not None and dom < dom_first,
@@ -186,7 +132,7 @@ def build_signals(dom, ethbtc, fg_value):
     return sig
 
 # =========================
-# Header metrics
+# Header Metrics
 # =========================
 col1, col2, col3, col4 = st.columns(4)
 
@@ -195,9 +141,8 @@ btc_dom = None
 if g and "data" in g and "market_cap_percentage" in g["data"]:
     try:
         btc_dom = float(g["data"]["market_cap_percentage"].get("btc", 0))
-    except Exception:
+    except:
         btc_dom = None
-
 if btc_dom is None:
     st.warning("⚠️ BTC Dominance could not be fetched. Using fallback value for signals.")
     btc_dom = 60.0
@@ -223,128 +168,84 @@ col4.metric("BTC / ETH ($)", f"{btc_price:,.0f} / {eth_price:,.0f}" if btc_price
 st.markdown("---")
 
 # =========================
-# Signals Panel with Explanation
+# Core Signals with Explanation
 # =========================
 sig = build_signals(btc_dom, ethbtc_val, fg_value)
+st.subheader("⚡ Signals & Suggested Actions")
 
-st.subheader("⚡ Signals & Actionable Advice")
-c1, c2, c3, c4 = st.columns(4)
-actions = []
-# Dom < first
-if sig['dom_below_first']:
-    c1.success(f"Dom < {dom_first:.2f}% ✅")
-    actions.append("BTC dominance low: Consider altcoin rotation.")
-else:
-    c1.error(f"Dom < {dom_first:.2f}% ❌")
-    actions.append("BTC dominance high: Stay in BTC or stablecoins.")
+def signal_text(name, flag, explanation, action):
+    icon = "🟢 YES" if flag else "🔴 NO"
+    st.markdown(f"**{name}:** {icon}  \n*Explanation:* {explanation}  \n*Action:* {action}")
 
-# Dom < second
-if sig['dom_below_second']:
-    c2.success(f"Dom < {dom_second:.2f}% ✅")
-    actions.append("Strong alt season signal: Evaluate profit-taking and alt rotation.")
-else:
-    c2.error(f"Dom < {dom_second:.2f}% ❌")
+signal_text(
+    f"Dom < {dom_first:.2f}%",
+    sig["dom_below_first"],
+    "BTC dominance dropping below first threshold indicates altcoins may start outperforming BTC.",
+    "Prepare to allocate part of your portfolio into top altcoins."
+)
+signal_text(
+    f"Dom < {dom_second:.2f}%",
+    sig["dom_below_second"],
+    "BTC dominance dropping further suggests altcoin season is stronger and profit-taking on BTC might be considered.",
+    "Consider selling portions of BTC for profit and rotating to alts/stablecoins."
+)
+signal_text(
+    f"ETH/BTC > {ethbtc_break:.3f}",
+    sig["ethbtc_break"],
+    "ETH is outperforming BTC.",
+    "Opportunity to rotate from BTC to ETH or ETH-rich alts."
+)
+signal_text(
+    f"F&G ≥ 80",
+    sig["greed_high"],
+    "Market is extremely greedy; high risk of short-term pullbacks.",
+    "Take partial profits and tighten stops."
 
-# ETH/BTC breakout
-if sig['ethbtc_break']:
-    c3.success(f"ETH/BTC > {ethbtc_break:.3f} ✅")
-    actions.append("ETH outperforming BTC: Potential alt rotation opportunity.")
-else:
-    c3.error(f"ETH/BTC > {ethbtc_break:.3f} ❌")
-
-# F&G ≥ 80
-if sig['greed_high']:
-    c4.success(f"F&G ≥ 80 ✅")
-    actions.append("Market greed high: Consider taking profits.")
-else:
-    c4.error(f"F&G ≥ 80 ❌")
-
-# Profit-taking mode
+)
 if sig["profit_mode"]:
-    st.success("Profit-taking mode is ON")
+    st.success("💡 Profit-taking mode is ON: tighten stops or sell portions of holdings.")
 else:
-    st.info("Profit-taking mode is OFF")
-
-st.markdown("**Suggested Actions:**")
-for a in actions:
-    st.markdown(f"- {a}")
+    st.info("Profit-taking mode is OFF: no immediate selling signal.")
 
 # =========================
-# Extra Indicators
-# =========================
-st.subheader("📌 Extra Indicators")
-
-btc_hist = get_market_chart("bitcoin", 240)
-eth_hist = get_market_chart("ethereum", 240)
-
-# RSI
-btc_rsi_val = float(rsi(btc_hist["Price"],14).iloc[-1]) if not btc_hist.empty else None
-eth_rsi_val = float(rsi(eth_hist["Price"],14).iloc[-1]) if not eth_hist.empty else None
-
-# Alt Season Ratio
-alt_season_ratio = None
-if g and "data" in g and "total_market_cap" in g["data"] and "market_cap_percentage" in g["data"]:
-    try:
-        total_usd = g["data"]["total_market_cap"].get("usd", None)
-        btc_pct = g["data"]["market_cap_percentage"].get("btc", None)
-        if total_usd and btc_pct is not None and btc_pct > 0:
-            btc_mcap = total_usd * (btc_pct / 100.0)
-            alt_mcap = total_usd - btc_mcap
-            alt_season_ratio = alt_mcap / btc_mcap if btc_mcap > 0 else None
-    except Exception:
-        alt_season_ratio = None
-if alt_season_ratio is None:
-    st.warning("⚠️ Alt Season Ratio not available (global mkt data issue).")
-
-# Volume spikes
-btc_vol_spike, btc_vol_latest, btc_vol_avg7 = volume_spike_flag(btc_hist["Volume"], vol_spike_multiple, window=7) if not btc_hist.empty else (None,None,None)
-eth_vol_spike, eth_vol_latest, eth_vol_avg7 = volume_spike_flag(eth_hist["Volume"], vol_spike_multiple, window=7) if not eth_hist.empty else (None,None,None)
-
-i1, i2, i3, i4 = st.columns(4)
-i3.markdown(f"**BTC RSI(14):** {btc_rsi_val:.1f}" if btc_rsi_val else "BTC RSI(14): N/A")
-i4.markdown(f"**ETH RSI(14):** {eth_rsi_val:.1f}" if eth_rsi_val else "ETH RSI(14): N/A")
-
-j1, j2, j3 = st.columns(3)
-if alt_season_ratio:
-    j1.success(f"Alt Season Ratio: {alt_season_ratio:.2f}")
-else:
-    j1.warning("Alt Season Ratio: N/A ⚠️")
-
-def fmt_vol(v):
-    return f"${v/1e9:.2f}B" if v and v >= 1e9 else (f"${v/1e6:.1f}M" if v and v >= 1e6 else (f"${v:,.0f}" if v else "N/A"))
-
-if btc_vol_spike is None:
-    j2.warning("BTC Volume Spike: N/A ⚠️")
-else:
-    j2.markdown(f"**BTC Vol Spike:** {'✅ Yes' if btc_vol_spike else 'No'} (Latest: {fmt_vol(btc_vol_latest)}, 7d Avg: {fmt_vol(btc_vol_avg7)})")
-
-if eth_vol_spike is None:
-    j3.warning("ETH Volume Spike: N/A ⚠️")
-else:
-    j3.markdown(f"**ETH Vol Spike:** {'✅ Yes' if eth_vol_spike else 'No'} (Latest: {fmt_vol(eth_vol_latest)}, 7d Avg: {fmt_vol(eth_vol_avg7)})")
-
-st.caption("Tip: RSI>70 may be overbought; RSI<30 oversold.")
-
-# =========================
-# Combined Profit Ladder
+# Profit Ladder Table
 # =========================
 st.subheader("💰 Combined Profit Ladder (BTC & ETH)")
-btc_ladder = build_profit_ladder(entry_btc, ladder_step_pct, sell_pct_per_step, max_ladder_steps); btc_ladder["Coin"]="BTC"
-eth_ladder = build_profit_ladder(entry_eth, ladder_step_pct, sell_pct_per_step, max_ladder_steps); eth_ladder["Coin"]="ETH"
+btc_ladder = build_profit_ladder(entry_btc, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
+btc_ladder["Coin"] = "BTC"
+eth_ladder = build_profit_ladder(entry_eth, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
+eth_ladder["Coin"] = "ETH"
 combined_ladder = pd.concat([btc_ladder, eth_ladder], ignore_index=True)
 combined_ladder = combined_ladder[["Coin", "Step", "Price Target", "% Gain", "Sell %"]]
 st.dataframe(combined_ladder, use_container_width=True)
 
 # =========================
-# Top Altcoins Table (Buying Chart)
+# Altcoin Table & Buying Chart
 # =========================
-st.subheader("🔥 Top Altcoins & Suggested Actions")
+st.subheader("🔥 Top Altcoins & Suggested Action")
 alt_df = get_top_alts(top_n_alts)
 if sig["rotate_to_alts"] and not alt_df.empty:
-    alt_df['Suggested Action'] = f'✅ Buy / Allocate ~{target_alt_alloc}%'
+    alt_df['Suggested Action'] = '✅ Rotate In'
 else:
-    alt_df['Suggested Action'] = '⚠️ Wait / Hold'
+    alt_df['Suggested Action'] = '⚠️ Wait'
 st.dataframe(alt_df, use_container_width=True)
+
+# Altcoin Buying Chart (Top N by 7d %)
+st.subheader("📊 Altcoin 7d Performance Chart")
+if not alt_df.empty and "7d %" in alt_df.columns:
+    fig_alt = go.Figure()
+    fig_alt.add_trace(go.Bar(
+        x=alt_df['Coin'],
+        y=alt_df['7d %'],
+        marker_color=['green' if x>=0 else 'red' for x in alt_df['7d %']],
+        name='7d Performance'
+    ))
+    fig_alt.update_layout(
+        title="Top Altcoin 7-Day % Change",
+        xaxis_title="Coin",
+        yaxis_title="% Change",
+    )
+    st.plotly_chart(fig_alt, use_container_width=True)
 
 # =========================
 # Live Crypto News Feed
@@ -356,6 +257,6 @@ try:
         for entry in feed.entries[:10]:
             st.markdown(f"[{entry.title}]({entry.link})")
     else:
-        st.info("No news available right now. Try refreshing.")
+        st.info("No news available right now. Try refreshing in a few seconds.")
 except Exception as e:
-    st.warning(f"News feed could not be loaded: {str(e)}")
+    st.warning(f"News feed could not be loaded: {e}")
