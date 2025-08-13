@@ -1,7 +1,7 @@
-streamlit==1.29.0
-pandas==2.1.0
-numpy==1.27.0
-requests==2.32.0
-plotly==6.16.1
-feedparser==6.0.10
-cachetools==5.4.0
+streamlit
+requests
+pandas
+python-binance
+ccxt
+web3
+lunarcrush
