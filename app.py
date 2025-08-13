@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 # Helper Functions
 # ---------------------------
 def fetch_fear_greed():
-    """Fetch Fear & Greed Index"""
+    """Fetch Fear & Greed Index safely"""
     try:
         url = "https://api.alternative.me/fng/?limit=1"
         r = requests.get(url).json()
@@ -17,14 +17,19 @@ def fetch_fear_greed():
         classification = r['data'][0]['value_classification']
         return value, classification
     except:
-        return None, None
+        st.warning("⚠️ Fear & Greed Index unavailable. Using fallback value 50 (Neutral).")
+        return 50, "Neutral"
 
 def fetch_crypto_price(symbol):
-    """Fetch latest crypto price from Yahoo Finance"""
+    """Fetch latest crypto price from Yahoo Finance safely"""
     try:
         data = yf.download(symbol, period="7d", interval="1d")
+        if data.empty:
+            st.warning(f"⚠️ {symbol} data empty. Using fallback prices.")
+            return None
         return data
     except:
+        st.warning(f"⚠️ Error fetching {symbol} price data. Using fallback prices.")
         return None
 
 def check_signal(value, threshold, comparison="lt"):
@@ -47,12 +52,20 @@ st.title("📊 Crypto Market & Alt Season Dashboard")
 # ---------------------------
 btc_price_data = fetch_crypto_price("BTC-USD")
 eth_price_data = fetch_crypto_price("ETH-USD")
-btc_price = btc_price_data['Close'][-1] if btc_price_data is not None else 30000
-eth_price = eth_price_data['Close'][-1] if eth_price_data is not None else 2000
+
+# Safe BTC price
+if btc_price_data is not None and not btc_price_data.empty:
+    btc_price = btc_price_data['Close'][-1]
+else:
+    btc_price = 30000  # fallback
+
+# Safe ETH price
+if eth_price_data is not None and not eth_price_data.empty:
+    eth_price = eth_price_data['Close'][-1]
+else:
+    eth_price = 2000  # fallback
 
 fear_value, fear_class = fetch_fear_greed()
-fear_value = fear_value if fear_value else 50
-fear_class = fear_class if fear_class else "Neutral"
 
 # ---------------------------
 # User Inputs or Fallbacks
@@ -93,9 +106,9 @@ st.table(pd.DataFrame(extra_data))
 # ---------------------------
 st.subheader("📈 BTC / ETH Price Charts (7d)")
 fig = go.Figure()
-if btc_price_data is not None:
+if btc_price_data is not None and not btc_price_data.empty:
     fig.add_trace(go.Scatter(x=btc_price_data.index, y=btc_price_data['Close'], name='BTC', line=dict(color='orange')))
-if eth_price_data is not None:
+if eth_price_data is not None and not eth_price_data.empty:
     fig.add_trace(go.Scatter(x=eth_price_data.index, y=eth_price_data['Close'], name='ETH', line=dict(color='blue')))
 fig.update_layout(xaxis_title="Date", yaxis_title="Price (USD)")
 st.plotly_chart(fig, use_container_width=True)
