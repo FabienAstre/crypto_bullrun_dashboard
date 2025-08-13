@@ -126,4 +126,4 @@ Assign 1 point for each favorable signal:
 
 st.success("✅ Use this scoring system to make systematic rotation decisions rather than guessing!")
 
-st.markdown("Made with ❤️ by Fabien Astre")
+st.markdown("Made with ❤️ by Fabien Astr")
