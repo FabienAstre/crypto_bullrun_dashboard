@@ -275,14 +275,9 @@ fig.update_layout(title=f"BTC / ETH Price ({timeframe})", xaxis_title="Date", ya
 st.plotly_chart(fig, use_container_width=True)
 
 # =========================
-# BTC Dominance & Altcoin Momentum Charts
+# Altcoin Momentum Charts
 # =========================
-st.subheader("📊 BTC Dominance & Altcoin Momentum")
-df_dom_hist = get_btc_dominance_history()
-fig_dom = go.Figure()
-fig_dom.add_trace(go.Scatter(x=df_dom_hist['Date'], y=df_dom_hist['BTC_Dominance'], mode='lines', name='BTC Dominance'))
-fig_dom.update_layout(title="BTC Dominance (Last 90 Days)", xaxis_title="Date", yaxis_title="BTC Dominance %")
-st.plotly_chart(fig_dom, use_container_width=True)
+
 
 fig_alt = go.Figure()
 if not alt_df.empty:
