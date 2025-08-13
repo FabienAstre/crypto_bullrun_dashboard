@@ -22,8 +22,7 @@ ladder_step_pct = st.sidebar.slider("Take profit every X% gain", 1, 50, 10)
 sell_pct_per_step = st.sidebar.slider("Sell Y% each step", 1, 50, 10)
 max_ladder_steps = st.sidebar.slider("Max ladder steps", 1, 30, 8)
 
-st.sidebar.subheader("Trailing Stop (Optional)
-")
+st.sidebar.subheader("Trailing Stop (Optional)")
 use_trailing = st.sidebar.checkbox("Enable trailing stop", value=True)
 trail_pct = st.sidebar.slider("Trailing stop (%)", 5, 50, 20)
 
@@ -202,7 +201,6 @@ for i, s in enumerate(signal_names):
 # =========================
 st.header("🎯 Profit-Taking Ladder")
 
-# ladder function same as before
 def build_ladder(entry, current, step_pct, sell_pct, max_steps):
     rows = []
     if entry <= 0:
