@@ -55,7 +55,7 @@ def get_ethbtc():
 def get_prices_usd(ids):
     r = requests.get(
         "https://api.coingecko.com/api/v3/simple/price",
-        params={"ids":",\".join(ids), "vs_currencies":"usd"},
+        params={"ids": ",".join(ids), "vs_currencies": "usd"},
         timeout=20
     )
     r.raise_for_status()
