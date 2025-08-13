@@ -59,23 +59,17 @@ def safe_request(url, params=None, max_retries=5, backoff=2):
 @st.cache_data(ttl=300)
 def get_global():
     data = safe_request("https://api.coingecko.com/api/v3/global")
-    if data and "data" in data:
-        return data
-    return None
+    return data if data else None
 
 @st.cache_data(ttl=300)
 def get_ethbtc():
     data = safe_request("https://api.coingecko.com/api/v3/simple/price", params={"ids":"ethereum","vs_currencies":"btc"})
-    if data and "ethereum" in data:
-        return float(data["ethereum"]["btc"])
-    return None
+    return float(data["ethereum"]["btc"]) if data and "ethereum" in data else None
 
 @st.cache_data(ttl=300)
 def get_prices_usd(ids):
     data = safe_request("https://api.coingecko.com/api/v3/simple/price", params={"ids": ",".join(ids), "vs_currencies": "usd"})
-    if data:
-        return data
-    return {i: {"usd": None} for i in ids}
+    return data if data else {i: {"usd": None} for i in ids}
 
 @st.cache_data(ttl=300)
 def get_fear_greed():
@@ -98,7 +92,6 @@ def get_top_alts(n=50):
     }
     data = safe_request(url, params)
     if not data:
-        st.warning("Could not fetch top altcoins. Please try again later.")
         return pd.DataFrame(columns=["Rank", "Coin", "Name", "Price ($)", "24h %", "7d %", "30d %", "Mkt Cap ($B)"])
     data = [x for x in data if x["symbol"].upper() not in ("BTC","ETH")][:n]
     return pd.DataFrame([{
@@ -156,7 +149,7 @@ def build_signals(dom, ethbtc, fg_value):
 # =========================
 col1, col2, col3, col4 = st.columns(4)
 g = get_global()
-btc_dom = float(g["data"]["market_cap_percentage"]["btc"]) if g else None
+btc_dom = float(g["data"]["market_cap_percentage"].get("btc",0)) if g and "data" in g and "market_cap_percentage" in g["data"] else None
 ethbtc_val = get_ethbtc()
 fg_value, fg_label = get_fear_greed()
 prices = get_prices_usd(["bitcoin","ethereum"])
@@ -173,18 +166,8 @@ st.markdown("---")
 # Signals Panel
 # =========================
 sig = None
-if btc_dom and ethbtc_val:
+if btc_dom is not None and ethbtc_val is not None:
     sig = build_signals(btc_dom, ethbtc_val, fg_value)
-    st.subheader("⚡ Signals")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(f"**Dom < {dom_first:.2f}%**: {'🟢 YES' if sig['dom_below_first'] else '🔴 NO'}")
-    c2.markdown(f"**Dom < {dom_second:.2f}%**: {'🟢 YES' if sig['dom_below_second'] else '🔴 NO'}")
-    c3.markdown(f"**ETH/BTC > {ethbtc_break:.3f}**: {'🟢 YES' if sig['ethbtc_break'] else '🔴 NO'}")
-    c4.markdown(f"**F&G ≥ 80**: {'🟢 YES' if sig['greed_high'] else '🔴 NO'}")
-    if sig["profit_mode"]:
-        st.success("Profit-taking mode is ON")
-    else:
-        st.info("Profit-taking mode is OFF")
 else:
     sig = {
         "rotate_to_alts": False,
@@ -194,6 +177,17 @@ else:
         "ethbtc_break": False,
         "greed_high": False
     }
+
+st.subheader("⚡ Signals")
+c1, c2, c3, c4 = st.columns(4)
+c1.markdown(f"**Dom < {dom_first:.2f}%**: {'🟢 YES' if sig['dom_below_first'] else '🔴 NO'}")
+c2.markdown(f"**Dom < {dom_second:.2f}%**: {'🟢 YES' if sig['dom_below_second'] else '🔴 NO'}")
+c3.markdown(f"**ETH/BTC > {ethbtc_break:.3f}**: {'🟢 YES' if sig['ethbtc_break'] else '🔴 NO'}")
+c4.markdown(f"**F&G ≥ 80**: {'🟢 YES' if sig['greed_high'] else '🔴 NO'}")
+if sig["profit_mode"]:
+    st.success("Profit-taking mode is ON")
+else:
+    st.info("Profit-taking mode is OFF")
 
 # =========================
 # Profit Ladder Table
@@ -281,7 +275,7 @@ fig.update_layout(title=f"BTC / ETH Price ({timeframe})", xaxis_title="Date", ya
 st.plotly_chart(fig, use_container_width=True)
 
 # =========================
-# Interactive Charts
+# BTC Dominance & Altcoin Momentum Charts
 # =========================
 st.subheader("📊 BTC Dominance & Altcoin Momentum")
 df_dom_hist = get_btc_dominance_history()
@@ -297,7 +291,7 @@ fig_alt.update_layout(title="Top Altcoin 7d Momentum", xaxis_title="Coin", yaxis
 st.plotly_chart(fig_alt, use_container_width=True)
 
 # =========================
-# Live News Feed
+# Live Crypto News Feed
 # =========================
 st.subheader("📰 Crypto News Feed")
 feed = feedparser.parse("https://cryptopanic.com/news/feed/")
