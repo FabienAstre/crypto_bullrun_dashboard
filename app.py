@@ -217,17 +217,6 @@ if not alt_df.empty:
 fig_alt.update_layout(title="Top Altcoin 7d Momentum", xaxis_title="Coin", yaxis_title="% Change")
 st.plotly_chart(fig_alt, use_container_width=True)
 
-# =========================
-# BTC Dominance Chart (Static)
-# =========================
-st.subheader("📊 BTC Dominance Last 90 Days")
-dates = pd.date_range(end=datetime.datetime.today(), periods=90)
-dom_vals = np.linspace(65, 55, 90)
-df_dom_hist = pd.DataFrame({"Date": dates, "BTC_Dominance": dom_vals})
-fig_dom = go.Figure()
-fig_dom.add_trace(go.Scatter(x=df_dom_hist['Date'], y=df_dom_hist['BTC_Dominance'], mode='lines', name='BTC Dominance'))
-fig_dom.update_layout(title="BTC Dominance (Last 90 Days)", xaxis_title="Date", yaxis_title="BTC Dominance %")
-st.plotly_chart(fig_dom, use_container_width=True)
 
 # =========================
 # Live Crypto News Feed
