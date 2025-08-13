@@ -291,17 +291,40 @@ st.success(f"Consider allocating ~{target_alt_alloc}% to top alts.") if sig["rot
 
 
 # =========================
-# Crypto News
+# Altcoin Buying Chart
 # =========================
-st.subheader("📰 Crypto News Feed")
-rss_urls = ["https://cryptonews.com/news/feed","https://www.coindesk.com/arc/outboundfeeds/rss/","https://cointelegraph.com/rss"]
-news_items = []
-for rss in rss_urls:
-    try:
-        feed = feedparser.parse(rss)
-        for entry in feed.entries[:5]:
-            news_items.append({"Title": entry.title, "Link": entry.link})
-    except:
-        continue
-for n in news_items:
-    st.markdown(f"- [{n['Title']}]({n['Link']})")
+st.subheader("📊 Altcoin Buying Chart")
+
+alt_df_chart = alt_df.copy()
+alt_df_chart['Action Value'] = alt_df_chart['Suggested Action'].apply(lambda x: 1 if "Rotate In" in x else 0)
+
+fig_alt = go.Figure()
+fig_alt.add_trace(go.Bar(
+    x=alt_df_chart['Coin'],
+    y=alt_df_chart['Price ($)'],
+    name="Price ($)",
+    text=alt_df_chart['Price ($)'].apply(lambda x: f"${x:,.2f}"),
+    textposition="auto",
+    marker_color='lightskyblue'
+))
+# Add rotation signal as overlay markers
+fig_alt.add_trace(go.Scatter(
+    x=alt_df_chart['Coin'],
+    y=alt_df_chart['Price ($)']*1.05,  # Slightly above the bar
+    mode='markers+text',
+    text=alt_df_chart['Suggested Action'],
+    textposition='top center',
+    marker=dict(size=12, color=alt_df_chart['Action Value'].map({1: 'green', 0: 'red'})),
+    name="Suggested Action"
+))
+
+fig_alt.update_layout(
+    title="Top Altcoins with Suggested Buy/Wait Signals",
+    xaxis_title="Altcoin",
+    yaxis_title="Price ($)",
+    showlegend=False,
+    xaxis_tickangle=-45,
+    height=500
+)
+
+st.plotly_chart(fig_alt, use_container_width=True)
