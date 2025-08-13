@@ -112,8 +112,8 @@ def build_signals(dom, ethbtc, fg_value):
     sig["profit_mode"] = sig["dom_below_second"] or sig["greed_high"]
     sig["full_exit_watch"] = sig["dom_below_second"] and sig["greed_high"]
 
-    # Placeholder historical bull-run signals (demo values, in full version integrate API)
-    sig["MVRV_Z"] = True  # assume Z >7
+    # Placeholder historical bull-run signals
+    sig["MVRV_Z"] = True
     sig["SOPR_LTH"] = True
     sig["Exchange_Inflow"] = False
     sig["Pi_Cycle_Top"] = False
@@ -173,9 +173,9 @@ if btc_dom is not None and ethbtc is not None:
     c5.markdown(f"**Rotate to Alts**: {'🟢 GO' if sig['rotate_to_alts'] else '🔴 WAIT'}")
 
     if sig["profit_mode"]:
-        st.success("**Profit-taking mode is ON** — either dominance is in strong-confirm zone or Greed is high.")
+        st.success("**Profit-taking mode is ON**")
     else:
-        st.info("**Profit-taking mode is OFF** — wait for confluence or your price targets.")
+        st.info("**Profit-taking mode is OFF**")
 
 # =========================
 # Historical Bull-Run Signals Panel
@@ -235,24 +235,14 @@ if use_trailing and btc_price:
     if eth_stop:
         st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
-st.header("🔥 Altcoin Watch Table")
-if sig["rotate_to_alts"]:
-    alt_df = get_top_alts(top_n_alts)  # existing function
-    alt_df["Suggested Action"] = ["✅ Rotate In" if x > 0 else "⚠️ Wait" for x in alt_df["7d %"]]
-    st.dataframe(alt_df, use_container_width=True)
-    st.success(f"Alt season detected! Consider rotating {target_alt_alloc}% of your portfolio into top momentum alts.")
-else:
-    st.info("No alt season detected. Stay in BTC / stablecoins.")
-
 # =========================
-# Altcoin Rotation Table
+# Altcoin Tables
 # =========================
-st.header("🔥 Altcoin Rotation Table")
-if sig["rotate_to_alts"]:
-    alt_df = get_top_alts(top_n_alts)
-    def fmt_pct(x): return None if x is None else round(x,2)
-    for col in ["24h %","7d %","30d %"]: alt_df[col] = alt_df[col].map(fmt_pct)
-    st.dataframe(alt_df,use_container_width=True)
-    st.success(f"Alt season detected! Consider allocating {target_alt_alloc}% of portfolio to top momentum alts.")
+st.header("🔥 Altcoin Watch & Rotation Tables")
+alt_df = get_top_alts(top_n_alts)
+alt_df['Suggested Action'] = ['✅ Rotate In' if sig['rotate_to_alts'] and x>0 else '⚠️ Wait' for x in alt_df['7d %']]
+st.dataframe(alt_df, use_container_width=True)
+if sig['rotate_to_alts']:
+    st.success(f"Alt season detected! Consider allocating {target_alt_alloc}% of portfolio into top momentum alts.")
 else:
-    st.info("No alt season signal detected. Stay in BTC / stablecoins.")
+    st.info("No alt season signal detected. Watch these alts and wait for rotation conditions.")
