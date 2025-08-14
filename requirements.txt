@@ -1,9 +1,5 @@
-streamlit
-pandas
-numpy
-requests
-scikit-learn
-tensorflow
-plotly
-scikit-learn
-tensorflow
+streamlit>=1.25.0
+pandas>=2.1.0
+numpy>=1.26.0
+requests>=2.31.0
+plotly>=5.20.0
