@@ -271,4 +271,38 @@ elif active_signals >= 2:
     st.info("Moderate confluence. Partial profit-taking or watch closely.")
 else:
     st.success("Low confluence. Market still bullish, hold positions.")
+import plotly.express as px
+
+# =========================
+# Altcoin Chart & Rotation Probability
+# =========================
+st.header("📈 Altcoin Momentum & Rotation Probability")
+
+# Compute a simple "rotation probability" score: normalize 7d % change relative to top N alts
+if not alt_df.empty:
+    max_7d = alt_df['7d %'].max()
+    min_7d = alt_df['7d %'].min()
+    alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(
+        lambda x: round(100*(x-min_7d)/(max_7d-min_7d),2) if max_7d!=min_7d else 0
+    )
+    
+    fig = px.bar(
+        alt_df.sort_values('Rotation Score (%)', ascending=False).head(top_n_alts),
+        x='Coin', y='Rotation Score (%)',
+        color='Rotation Score (%)',
+        hover_data=['Name','Price ($)','7d %','30d %','Mkt Cap ($B)','Suggested Action'],
+        color_continuous_scale='Viridis',
+        title="Top Altcoins Rotation Probability"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Optional: highlight coins with very high rotation probability
+    top_candidates = alt_df[alt_df['Rotation Score (%)']>=75]
+    if not top_candidates.empty and sig['rotate_to_alts']:
+        st.success("⚡ High-probability altcoins for rotation detected!")
+        st.table(top_candidates[['Coin','Name','Price ($)','7d %','Rotation Score (%)','Suggested Action']])
+    elif sig['rotate_to_alts']:
+        st.info("Alt season signal ON, but no extreme high-probability alts this week.")
+else:
+    st.warning("No altcoin data available for chart.")
 
