@@ -5,6 +5,8 @@ import pandas as pd
 import streamlit as st
 import datetime
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", layout="wide")
 
@@ -254,13 +256,9 @@ st.header("🔥 Altcoin Watch & Rotation Tables")
 alt_df = get_top_alts(top_n_alts)
 alt_df['Suggested Action'] = ['✅ Rotate In' if sig['rotate_to_alts'] and x>0 else '⚠️ Wait' for x in alt_df['7d %']]
 st.dataframe(alt_df, use_container_width=True)
-if sig['rotate_to_alts']:
-    st.success(f"Alt season detected! Consider allocating {target_alt_alloc}% of portfolio into top momentum alts.")
-else:
-    st.info("No alt season signal detected. Watch these alts and wait for rotation conditions.")
 
 # =========================
-# Confluence Summary
+# Signal Confluence Summary & Details
 # =========================
 st.header("🔔 Signal Confluence Summary")
 active_signals = sum([sig[s] for s in signal_names + ["RSI_overbought","MACD_div","Volume_div","greed_high"]])
@@ -271,38 +269,80 @@ elif active_signals >= 2:
     st.info("Moderate confluence. Partial profit-taking or watch closely.")
 else:
     st.success("Low confluence. Market still bullish, hold positions.")
-import plotly.express as px
+
+# Detailed active/inactive signals
+st.subheader("🔍 Active Signals Detail")
+all_signals = signal_names + ["RSI_overbought","MACD_div","Volume_div","greed_high"]
+active_signal_list = [s for s in all_signals if sig[s]]
+inactive_signal_list = [s for s in all_signals if not sig[s]]
+st.write(f"**Active Signals ({len(active_signal_list)})**: {', '.join(active_signal_list) if active_signal_list else 'None'}")
+st.write(f"**Inactive Signals ({len(inactive_signal_list)})**: {', '.join(inactive_signal_list) if inactive_signal_list else 'None'}")
 
 # =========================
-# Altcoin Chart & Rotation Probability
+# Improved Altcoin Chart + Dropdown
 # =========================
-st.header("📈 Altcoin Momentum & Rotation Probability")
+st.header("📊 Altcoin Momentum & Rotation Dashboard")
 
-# Compute a simple "rotation probability" score: normalize 7d % change relative to top N alts
 if not alt_df.empty:
+    # Compute rotation score
     max_7d = alt_df['7d %'].max()
     min_7d = alt_df['7d %'].min()
     alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(
         lambda x: round(100*(x-min_7d)/(max_7d-min_7d),2) if max_7d!=min_7d else 0
     )
     
-    fig = px.bar(
-        alt_df.sort_values('Rotation Score (%)', ascending=False).head(top_n_alts),
-        x='Coin', y='Rotation Score (%)',
-        color='Rotation Score (%)',
-        hover_data=['Name','Price ($)','7d %','30d %','Mkt Cap ($B)','Suggested Action'],
-        color_continuous_scale='Viridis',
-        title="Top Altcoins Rotation Probability"
+    # Dual-axis chart
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=alt_df['Coin'],
+        y=alt_df['Rotation Score (%)'],
+        name='Rotation Score (%)',
+        marker_color='indianred',
+        hovertext=alt_df['Suggested Action']
+    ))
+    fig.add_trace(go.Scatter(
+        x=alt_df['Coin'],
+        y=alt_df['7d %'],
+        name='7d % Change',
+        yaxis='y2',
+        mode='lines+markers',
+        marker_color='royalblue'
+    ))
+    fig.update_layout(
+        title="Top Altcoins Momentum & Rotation Probability",
+        xaxis_title="Altcoin",
+        yaxis=dict(title="Rotation Score (%)"),
+        yaxis2=dict(title="7d % Change", overlaying='y', side='right'),
+        legend=dict(y=1.1, orientation="h"),
+        hovermode='x unified'
     )
     st.plotly_chart(fig, use_container_width=True)
-
-    # Optional: highlight coins with very high rotation probability
-    top_candidates = alt_df[alt_df['Rotation Score (%)']>=75]
-    if not top_candidates.empty and sig['rotate_to_alts']:
+    
+    # Top rotation candidates
+    top_candidates = alt_df[(alt_df['Rotation Score (%)']>=75) & (sig['rotate_to_alts'])]
+    if not top_candidates.empty:
         st.success("⚡ High-probability altcoins for rotation detected!")
         st.table(top_candidates[['Coin','Name','Price ($)','7d %','Rotation Score (%)','Suggested Action']])
     elif sig['rotate_to_alts']:
         st.info("Alt season signal ON, but no extreme high-probability alts this week.")
+
+    # Dropdown to select altcoin and show historical price
+    st.subheader("📈 View Specific Altcoin History")
+    alt_choice = st.selectbox("Select an Altcoin", alt_df['Coin'].tolist())
+    
+    # Fetch historical price for the selected coin
+    try:
+        r = requests.get(
+            f"https://api.coingecko.com/api/v3/coins/{alt_choice.lower()}/market_chart",
+            params={"vs_currency":"usd","days":30,"interval":"daily"}, timeout=20
+        )
+        r.raise_for_status()
+        data = r.json()
+        prices = pd.DataFrame(data["prices"], columns=["timestamp","price"])
+        prices["date"] = pd.to_datetime(prices["timestamp"], unit='ms')
+        fig_hist = px.line(prices, x="date", y="price", title=f"{alt_choice} Price Last 30 Days", markers=True)
+        st.plotly_chart(fig_hist, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Failed to fetch historical data for {alt_choice}: {e}")
 else:
     st.warning("No altcoin data available for chart.")
-
