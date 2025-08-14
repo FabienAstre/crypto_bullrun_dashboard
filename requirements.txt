@@ -5,3 +5,5 @@ requests
 scikit-learn
 tensorflow
 plotly
+scikit-learn
+tensorflow
