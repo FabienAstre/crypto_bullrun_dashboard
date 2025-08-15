@@ -394,4 +394,67 @@ for sig_name, sig_info in signal_defs_expanded.items():
         status = "🟢" if active else "🔴"
     
     st.markdown(f"{status} **{sig_name}** - {sig_info['desc']}")
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import requests
+import streamlit as st
+
+st.header("🌈 BTC Rainbow Chart")
+
+# Fetch BTC historical prices from CoinGecko
+@st.cache_data(ttl=3600)
+def get_btc_history(days=3650):  # ~10 years
+    url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+    params = {"vs_currency": "usd", "days": days, "interval": "daily"}
+    r = requests.get(url, params=params, timeout=20)
+    r.raise_for_status()
+    data = pd.DataFrame(r.json()["prices"], columns=["timestamp", "price"])
+    data["date"] = pd.to_datetime(data["timestamp"], unit='ms')
+    return data
+
+btc_data = get_btc_history()
+
+# Define rainbow bands (logarithmic)
+colors = [
+    "#ff0000", "#ff4500", "#ff8c00", "#ffd700", "#7fff00",
+    "#00ff00", "#00fa9a", "#00ced1", "#1e90ff", "#9400d3"
+]
+labels = [
+    "Maximum Bubble", "Sell Zone", "High Risk", "Overvalued", 
+    "Fairly Priced", "Neutral", "Accumulation Zone", "Bargain", 
+    "Deep Bargain", "Buy Zone"
+]
+
+min_price = btc_data["price"].min()
+max_price = btc_data["price"].max()
+log_min = np.log(min_price)
+log_max = np.log(max_price)
+log_range = log_max - log_min
+
+# Create rainbow band dataframe
+bands = pd.DataFrame({
+    "y0": np.exp(log_min + np.array(range(len(colors))) / len(colors) * log_range),
+    "y1": np.exp(log_min + (np.array(range(1, len(colors)+1)) / len(colors)) * log_range),
+    "color": colors,
+    "label": labels
+})
+
+# Plot
+fig = px.line(btc_data, x="date", y="price", title="Bitcoin Rainbow Chart")
+for _, row in bands.iterrows():
+    fig.add_shape(
+        type="rect",
+        x0=btc_data["date"].min(),
+        x1=btc_data["date"].max(),
+        y0=row["y0"],
+        y1=row["y1"],
+        fillcolor=row["color"],
+        opacity=0.3,
+        line_width=0,
+    )
+
+fig.update_yaxes(type="log", title="BTC Price (log scale)")
+fig.update_xaxes(title="Date")
+st.plotly_chart(fig, use_container_width=True)
 
