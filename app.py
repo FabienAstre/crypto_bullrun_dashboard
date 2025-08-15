@@ -7,6 +7,7 @@ import datetime
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from pytrends.request import TrendReq
 
 st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", layout="wide")
 
@@ -35,7 +36,7 @@ st.sidebar.subheader("Alt Rotation")
 target_alt_alloc = st.sidebar.slider("Target Alt allocation when signals fire (%)", 0, 100, 40)
 top_n_alts = st.sidebar.slider("Top N alts to scan (by market cap)", 10, 100, 50, 10)
 
-st.sidebar.caption("This dashboard pulls live data at runtime (CoinGecko & Alternative.me).")
+st.sidebar.caption("This dashboard pulls live data at runtime (CoinGecko, Alternative.me, Google Trends).")
 
 # =========================
 # Data Fetchers
@@ -78,7 +79,6 @@ def get_fear_greed():
 
 @st.cache_data(ttl=300)
 def get_top_alts_safe(n=50):
-    """Get top n altcoins (excluding BTC and ETH), returns DataFrame."""
     try:
         r = requests.get(
             "https://api.coingecko.com/api/v3/coins/markets",
@@ -111,13 +111,23 @@ def get_top_alts_safe(n=50):
 
 @st.cache_data(ttl=120)
 def get_rsi_macd_volume():
-    # Placeholder: in a real version fetch BTC price history and compute RSI/MACD/Volume divergence
-    return 72, 0.002, False  # RSI, MACD hist divergence, volume divergence
+    # Placeholder
+    return 72, 0.002, False
+
+@st.cache_data(ttl=360)
+def get_google_trends(keywords=["Bitcoin","Ethereum"], timeframe='now 7-d'):
+    pytrends = TrendReq(hl='en-US', tz=360)
+    pytrends.build_payload(keywords, timeframe=timeframe)
+    data = pytrends.interest_over_time()
+    if not data.empty:
+        spikes = {kw: data[kw].pct_change().max()*100 for kw in keywords}
+        return spikes
+    return {kw: 0 for kw in keywords}
 
 # =========================
 # Signal Builder
 # =========================
-def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
+def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div, trends):
     sig = {
         "dom_below_first": dom is not None and dom < dom_first,
         "dom_below_second": dom is not None and dom < dom_second,
@@ -125,12 +135,12 @@ def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
         "greed_high": fg_value is not None and fg_value >= 80,
         "RSI_overbought": rsi is not None and rsi > 70,
         "MACD_div": macd_div,
-        "Volume_div": vol_div
+        "Volume_div": vol_div,
+        "GoogleTrendsSpike": any(v>50 for v in trends.values())  # Example threshold
     }
     sig["rotate_to_alts"] = sig["dom_below_first"] and sig["ethbtc_break"]
     sig["profit_mode"] = sig["dom_below_second"] or sig["greed_high"] or sig["RSI_overbought"] or sig["MACD_div"] or sig["Volume_div"]
     sig["full_exit_watch"] = sig["dom_below_second"] and sig["greed_high"]
-    # Historical bull-run placeholders
     sig["MVRV_Z"] = True
     sig["SOPR_LTH"] = True
     sig["Exchange_Inflow"] = False
@@ -147,7 +157,7 @@ btc_dom = None
 ethbtc = None
 fg_value, fg_label = get_fear_greed()
 rsi, macd_div, vol_div = get_rsi_macd_volume()
-sig = {}
+trends = get_google_trends()
 
 try:
     g = get_global()
@@ -179,53 +189,23 @@ except Exception as e:
 
 st.markdown("---")
 
-# =========================
-# Signals Panel with Explanations
-# =========================
-if btc_dom is not None and ethbtc is not None:
-    sig = build_signals(btc_dom, ethbtc, fg_value, rsi, macd_div, vol_div)
+sig = build_signals(btc_dom, ethbtc, fg_value, rsi, macd_div, vol_div, trends)
 
+# =========================
+# Signals Panel
+# =========================
 signal_defs = {
-    "Dom < First Break": {
-        "active": sig.get("dom_below_first"),
-        "desc": "BTC losing market share → altcoins may start moving up."
-    },
-    "Dom < Strong Confirm": {
-        "active": sig.get("dom_below_second"),
-        "desc": "Confirms major rotation into altcoins → potential altseason."
-    },
-    "ETH/BTC Breakout": {
-        "active": sig.get("ethbtc_break"),
-        "desc": "ETH outperforming BTC → bullish for ETH and altcoins."
-    },
-    "F&G ≥ 80": {
-        "active": sig.get("greed_high"),
-        "desc": "Extreme greed → market may be overbought."
-    },
-    "RSI > 70": {
-        "active": sig.get("RSI_overbought"),
-        "desc": "BTC overbought → possible short-term correction."
-    },
-    "MACD Divergence": {
-        "active": sig.get("MACD_div"),
-        "desc": "Momentum slowing → potential reversal."
-    },
-    "Volume Divergence": {
-        "active": sig.get("Volume_div"),
-        "desc": "Weak price movement → caution on trend continuation."
-    },
-    "Rotate to Alts": {
-        "active": sig.get("rotate_to_alts"),
-        "desc": "Strong rotation signal → move funds into altcoins."
-    },
-    "Profit Mode": {
-        "active": sig.get("profit_mode"),
-        "desc": "Suggests scaling out of positions / taking profit."
-    },
-    "Full Exit Watch": {
-        "active": sig.get("full_exit_watch"),
-        "desc": "Extreme signal → consider exiting major positions."
-    }
+    "Dom < First Break": {"active": sig.get("dom_below_first"), "desc": "BTC losing market share → altcoins may start moving up."},
+    "Dom < Strong Confirm": {"active": sig.get("dom_below_second"), "desc": "Confirms major rotation into altcoins → potential altseason."},
+    "ETH/BTC Breakout": {"active": sig.get("ethbtc_break"), "desc": "ETH outperforming BTC → bullish for ETH and altcoins."},
+    "F&G ≥ 80": {"active": sig.get("greed_high"), "desc": "Extreme greed → market may be overbought."},
+    "RSI > 70": {"active": sig.get("RSI_overbought"), "desc": "BTC overbought → possible short-term correction."},
+    "MACD Divergence": {"active": sig.get("MACD_div"), "desc": "Momentum slowing → potential reversal."},
+    "Volume Divergence": {"active": sig.get("Volume_div"), "desc": "Weak price movement → caution on trend continuation."},
+    "Rotate to Alts": {"active": sig.get("rotate_to_alts"), "desc": "Strong rotation signal → move funds into altcoins."},
+    "Profit Mode": {"active": sig.get("profit_mode"), "desc": "Suggests scaling out of positions / taking profit."},
+    "Full Exit Watch": {"active": sig.get("full_exit_watch"), "desc": "Extreme signal → consider exiting major positions."},
+    "Google Trends Spike": {"active": sig.get("GoogleTrendsSpike"), "desc": "Google search interest spiking → retail attention rising."}
 }
 
 st.markdown("### 📊 Key Market Signals")
@@ -233,100 +213,3 @@ cols = st.columns(len(signal_defs))
 for i, (name, info) in enumerate(signal_defs.items()):
     emoji = "🟢" if info["active"] else "🔴"
     cols[i].markdown(f"**{name}** {emoji}  \n*{info['desc']}*")
-
-# =========================
-# Profit Ladder Planner
-# =========================
-st.markdown("---")
-st.header("🎯 Profit-Taking Ladder")
-
-def build_ladder(entry, current, step_pct, sell_pct, max_steps):
-    rows = []
-    if entry <= 0:
-        return pd.DataFrame(rows)
-    for i in range(1, max_steps+1):
-        target = entry * (1 + step_pct/100.0)**i
-        rows.append({
-            "Step #": i,
-            "Target Price": round(target,2),
-            "Gain from Entry (%)": round((target/entry-1)*100,2),
-            "Sell This Step (%)": sell_pct
-        })
-    return pd.DataFrame(rows)
-
-btc_ladder = build_ladder(entry_btc, btc_price, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
-eth_ladder = build_ladder(entry_eth, eth_price, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
-cL, cR = st.columns(2)
-with cL:
-    st.subheader("BTC Ladder")
-    st.dataframe(btc_ladder,use_container_width=True)
-with cR:
-    st.subheader("ETH Ladder")
-    st.dataframe(eth_ladder,use_container_width=True)
-
-# =========================
-# Trailing Stop
-# =========================
-if use_trailing and btc_price:
-    st.markdown("---")
-    st.subheader("🛡️ Trailing Stop Guidance")
-    btc_stop = round(btc_price*(1-trail_pct/100.0),2)
-    eth_stop = round(eth_price*(1-trail_pct/100.0),2) if eth_price else None
-    st.write(f"- Suggested BTC stop: ${btc_stop:,.2f}")
-    if eth_stop:
-        st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
-
-# =========================
-# Altcoin Dashboard Top 30
-# =========================
-st.markdown("---")
-st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top 30)")
-
-alt_df = get_top_alts_safe(50)
-if not alt_df.empty:
-    alt_df = alt_df.sort_values(by='7d %', ascending=False).head(30)
-    min_7d = alt_df['7d %'].min()
-    max_7d = alt_df['7d %'].max()
-    alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(lambda x: round(100*(x-min_7d)/(max_7d-min_7d),2) if pd.notnull(x) else 0)
-    alt_df['Suggested Action'] = ['✅ Rotate In' if sig.get('rotate_to_alts') else '⚠️ Wait']*len(alt_df)
-
-    chart_option = st.selectbox("Select Altcoin Chart", ["Rotation Score (%)", "7-Day % Price Change", "Market Cap vs 7-Day % Change Bubble"])
-
-    if chart_option == "Rotation Score (%)":
-        fig = px.bar(alt_df, x='Coin', y='Rotation Score (%)', color='Rotation Score (%)', color_continuous_scale='RdYlGn', title="Rotation Score (%) by Altcoin")
-    elif chart_option == "7-Day % Price Change":
-        fig = px.bar(alt_df, x='Coin', y='7d %', color='7d %', color_continuous_scale='RdYlGn', text='7d %', title="7-Day % Price Change")
-    else:
-        fig = px.scatter(alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %', hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60, title="Market Cap vs 7-Day % Change Bubble")
-        fig.update_layout(xaxis_title="Market Cap ($B)", yaxis_title="7-Day % Change")
-
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.warning("No altcoin data available for top 30.")
-
-# =========================
-# Signals Detail Panel (Expanded)
-# =========================
-st.subheader("🔍 Signals Detail")
-signal_defs_expanded = {
-    "Dom < First Break": {"desc": "BTC losing market share → altcoins may start moving up."},
-    "Dom < Strong Confirm": {"desc": "Confirms major rotation into altcoins → potential altseason."},
-    "ETH/BTC Breakout": {"desc": "ETH outperforming BTC → bullish for ETH and altcoins."},
-    "F&G ≥ 80": {"desc": "Extreme greed → market may be overbought."},
-    "RSI > 70": {"desc": "BTC overbought → possible short-term correction."},
-    "MACD Divergence": {"desc": "Momentum slowing → potential reversal."},
-    "Volume Divergence": {"desc": "Weak price movement → caution on trend continuation."},
-    "Rotate to Alts": {"desc": "Strong rotation signal → move funds into altcoins."},
-    "Profit Mode": {"desc": "Suggests scaling out of positions / taking profit."},
-    "Full Exit Watch": {"desc": "Extreme signal → consider exiting major positions."},
-    "MVRV Z-Score": {"desc": "BTC historically overvalued when MVRV Z > 7."},
-    "SOPR LTH": {"desc": "Long-term holder SOPR > 1.5 → high profit taking."},
-    "Exchange Inflow": {"desc": "Exchange inflows spike → whales moving BTC to exchanges."},
-    "Pi Cycle Top": {"desc": "Pi Cycle Top indicator intersects price → major top possible."},
-    "Funding Rate": {"desc": "Perpetual funding > 0.2% long → market over-leveraged."}
-}
-
-for sig_name, sig_info in signal_defs_expanded.items():
-    active = sig.get(sig_name, False)
-    status = "🟢" if active else "🔴"
-    st.markdown(f"{status} **{sig_name}** - {sig_info['desc']}")
