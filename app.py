@@ -275,16 +275,19 @@ if use_trailing and btc_price:
     st.write(f"- Suggested BTC stop: ${btc_stop:,.2f}")
     if eth_stop:
         st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
-
 # =========================
-# Altcoin Dashboard Top 30 (Single Graph with Dropdown + Bubble)
+# Altcoin Dashboard Top 30 (Single Graph + Dropdown + Top Picks)
 # =========================
 st.markdown("---")
 st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top 30)")
 
+# Fetch top 50 altcoins safely
 alt_df = get_top_alts_safe(50)
 if not alt_df.empty:
+    # Take top 30 by 7d % change
     alt_df = alt_df.sort_values(by='7d %', ascending=False).head(30)
+
+    # Compute rotation score
     min_7d = alt_df['7d %'].min()
     max_7d = alt_df['7d %'].max()
     alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(lambda x: round(100*(x-min_7d)/(max_7d-min_7d),2) if pd.notnull(x) else 0)
@@ -313,55 +316,49 @@ if not alt_df.empty:
 
     st.plotly_chart(fig, use_container_width=True)
 
+    # =========================
+    # Top Rotation Picks
+    # =========================
     st.subheader("⚡ Top Rotation Picks")
+
+    # Sidebar filters
+    st.sidebar.subheader("Top Picks Filters")
+    min_rotation_score = st.sidebar.slider("Min Rotation Score (%)", 0, 100, 50)
+    min_7d_change = st.sidebar.slider("Min 7-Day % Change", -100, 100, -50)
+    market_cap_filter = st.sidebar.selectbox("Market Cap", ["All", "Large (>10B)", "Mid (1-10B)", "Small (<1B)"])
+    action_filter = st.sidebar.selectbox("Suggested Action", ["All", "✅ Rotate In", "⚠️ Wait"])
+    sort_by = st.sidebar.selectbox("Sort by", ["Rotation Score (%)", "7d %", "Mkt Cap ($B)"])
+
+    # Filter top candidates
+    top_candidates = alt_df[
+        (alt_df['Rotation Score (%)'] >= min_rotation_score) &
+        (alt_df['7d %'] >= min_7d_change)
+    ]
+
+    if market_cap_filter == "Large (>10B)":
+        top_candidates = top_candidates[top_candidates['Mkt Cap ($B)'] > 10]
+    elif market_cap_filter == "Mid (1-10B)":
+        top_candidates = top_candidates[(top_candidates['Mkt Cap ($B)'] >= 1) & (top_candidates['Mkt Cap ($B)'] <= 10)]
+    elif market_cap_filter == "Small (<1B)":
+        top_candidates = top_candidates[top_candidates['Mkt Cap ($B)'] < 1]
+
+    if action_filter != "All":
+        top_candidates = top_candidates[top_candidates['Suggested Action'] == action_filter]
+
+    # Sort the table
+    top_candidates = top_candidates.sort_values(by=sort_by, ascending=False)
+
+    # Highlight top coins visually
+    def highlight_top(row):
+        return ['background-color: #d4edda' if row['Rotation Score (%)'] >= 90 else '' for _ in row]
+
     st.dataframe(
-        alt_df[alt_df['Rotation Score (%)'] >= 75][['Coin','Name','Price ($)','7d %','Rotation Score (%)','Suggested Action']],
+        top_candidates[['Coin','Name','Price ($)','7d %','Rotation Score (%)','Suggested Action']].style.apply(highlight_top, axis=1),
         use_container_width=True
     )
+
 else:
     st.warning("No altcoin data available for top 30.")
-# =========================
-# Top Rotation Picks
-# =========================
-st.subheader("⚡ Top Rotation Picks")
-
-# Sidebar filters
-st.sidebar.subheader("Top Picks Filters")
-min_rotation_score = st.sidebar.slider("Min Rotation Score (%)", 0, 100, 75)
-min_7d_change = st.sidebar.slider("Min 7-Day % Change", -100, 100, 0)
-market_cap_filter = st.sidebar.selectbox("Market Cap", ["All", "Large (>10B)", "Mid (1-10B)", "Small (<1B)"])
-action_filter = st.sidebar.selectbox("Suggested Action", ["All", "✅ Rotate In", "⚠️ Wait"])
-sort_by = st.sidebar.selectbox("Sort by", ["Rotation Score (%)", "7d %", "Mkt Cap ($B)"])
-
-# Filter the top candidates
-top_candidates = alt_df[
-    (alt_df['Rotation Score (%)'] >= min_rotation_score) &
-    (alt_df['7d %'] >= min_7d_change)
-]
-
-if market_cap_filter == "Large (>10B)":
-    top_candidates = top_candidates[top_candidates['Mkt Cap ($B)'] > 10]
-elif market_cap_filter == "Mid (1-10B)":
-    top_candidates = top_candidates[(top_candidates['Mkt Cap ($B)'] >= 1) & (top_candidates['Mkt Cap ($B)'] <= 10)]
-elif market_cap_filter == "Small (<1B)":
-    top_candidates = top_candidates[top_candidates['Mkt Cap ($B)'] < 1]
-
-if action_filter != "All":
-    top_candidates = top_candidates[top_candidates['Suggested Action'] == action_filter]
-
-# Sort the table
-top_candidates = top_candidates.sort_values(by=sort_by, ascending=False)
-
-# Highlight top coins visually
-def highlight_top(row):
-    return ['background-color: #d4edda' if row['Rotation Score (%)'] >= 90 else '' for _ in row]
-
-st.dataframe(
-    top_candidates[['Coin','Name','Price ($)','7d %','Rotation Score (%)','Suggested Action']].style.apply(highlight_top, axis=1),
-    use_container_width=True
-)
-
-
 
 # =========================
 # Signal Confluence Summary
@@ -392,6 +389,3 @@ if sig:
         st.info("Moderate confluence. Partial profit-taking advised. ⚠️")
     else:
         st.success("Low confluence. Market still bullish. ✅")
-else:
-    st.warning("Signal summary unavailable due to missing data.")
-
