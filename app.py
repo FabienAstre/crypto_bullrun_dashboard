@@ -331,13 +331,27 @@ st.header("🔔 Signal Confluence Summary")
 
 if sig:
     all_signals = list(signal_defs.keys())
-    active_signals = sum([1 for s in all_signals if sig.get(s)])
-    st.write(f"Active Signals: {active_signals}/{len(all_signals)}")
-    if active_signals >= 7:
-        st.warning("High confluence! Consider scaling out or rotating to altcoins.")
-    elif active_signals >= 4:
-        st.info("Moderate confluence. Partial profit-taking advised.")
+    active_signals_list = [s for s in all_signals if sig.get(s)]
+    inactive_signals_list = [s for s in all_signals if not sig.get(s)]
+    active_signals_count = len(active_signals_list)
+
+    # Display active/inactive signals with explanations
+    st.subheader("🔍 Signals Detail")
+    for s in all_signals:
+        status_emoji = "🟢" if sig.get(s) else "🔴"
+        st.markdown(f"{status_emoji} **{s}** - {signal_defs[s]}")
+
+    # Summary
+    st.markdown("---")
+    st.write(f"**Active Signals: {active_signals_count}/{len(all_signals)}**")
+
+    # Confluence guidance
+    if active_signals_count >= 7:
+        st.warning("High confluence! Consider scaling out or rotating to altcoins. 🔔")
+    elif active_signals_count >= 4:
+        st.info("Moderate confluence. Partial profit-taking advised. ⚠️")
     else:
-        st.success("Low confluence. Market still bullish.")
+        st.success("Low confluence. Market still bullish. ✅")
 else:
-    st.warning("Signal summary unavailable")
+    st.warning("Signal summary unavailable due to missing data.")
+
