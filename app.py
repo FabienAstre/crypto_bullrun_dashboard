@@ -400,29 +400,76 @@ import plotly.express as px
 import requests
 import streamlit as st
 
+# =========================
+# 🌈 BTC Rainbow Chart
+# =========================
 st.header("🌈 BTC Rainbow Chart")
 
-# =========================
-# Fetch BTC historical prices safely
-# =========================
+# Fetch BTC historical prices from CoinDesk
 @st.cache_data(ttl=3600)
-def get_btc_history_safe(days=3650):  # ~10 years
-    url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-    params = {"vs_currency": "usd", "days": days, "interval": "daily"}
-    try:
-        r = requests.get(url, params=params, timeout=20)
-        r.raise_for_status()
-        data = pd.DataFrame(r.json().get("prices", []), columns=["timestamp", "price"])
-        if data.empty:
-            st.warning("BTC historical prices returned empty from API.")
-            return pd.DataFrame(columns=["timestamp","price","date"])
-        data["date"] = pd.to_datetime(data["timestamp"], unit='ms')
-        return data
-    except requests.exceptions.HTTPError as e:
-        st.warning(f"HTTP error fetching BTC history: {e}")
-    except requests.exceptions.RequestException as e:
-        st.warning(f"Network/API error fetching BTC history: {e}")
-    return pd.DataFrame(columns=["timestamp","price","date"])  # fallback empty
+def get_btc_history():
+    import requests
+    import pandas as pd
 
-# Fetch data
-btc_data = get_btc_history_safe()
+    try:
+        url = "https://api.coindesk.com/v1/bpi/historical/close.json"
+        params = {"start": "2010-07-17", "end": pd.Timestamp.today().strftime("%Y-%m-%d")}
+        response = requests.get(url, params=params, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+        df = pd.DataFrame(list(data["bpi"].items()), columns=["date", "price"])
+        df["date"] = pd.to_datetime(df["date"])
+        return df
+    except requests.HTTPError as e:
+        st.error(f"HTTP error fetching BTC history: {e}")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error fetching BTC data: {e}")
+        return pd.DataFrame()
+
+btc_data = get_btc_history()
+
+if not btc_data.empty:
+    # Define rainbow bands
+    colors = [
+        "#ff0000", "#ff4500", "#ff8c00", "#ffd700", "#7fff00",
+        "#00ff00", "#00fa9a", "#00ced1", "#1e90ff", "#9400d3"
+    ]
+    labels = [
+        "Maximum Bubble", "Sell Zone", "High Risk", "Overvalued", 
+        "Fairly Priced", "Neutral", "Accumulation Zone", "Bargain", 
+        "Deep Bargain", "Buy Zone"
+    ]
+
+    min_price = btc_data["price"].min()
+    max_price = btc_data["price"].max()
+    log_min = np.log(min_price)
+    log_max = np.log(max_price)
+    log_range = log_max - log_min
+
+    bands = pd.DataFrame({
+        "y0": np.exp(log_min + np.array(range(len(colors))) / len(colors) * log_range),
+        "y1": np.exp(log_min + (np.array(range(1, len(colors)+1)) / len(colors)) * log_range),
+        "color": colors,
+        "label": labels
+    })
+
+    # Plot BTC price with rainbow bands
+    fig = px.line(btc_data, x="date", y="price", title="Bitcoin Rainbow Chart")
+    for _, row in bands.iterrows():
+        fig.add_shape(
+            type="rect",
+            x0=btc_data["date"].min(),
+            x1=btc_data["date"].max(),
+            y0=row["y0"],
+            y1=row["y1"],
+            fillcolor=row["color"],
+            opacity=0.3,
+            line_width=0,
+        )
+
+    fig.update_yaxes(type="log", title="BTC Price (log scale)")
+    fig.update_xaxes(title="Date")
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.warning("BTC historical data unavailable. Rainbow chart cannot be displayed.")
