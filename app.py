@@ -7,7 +7,6 @@ import datetime
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from pytrends.request import TrendReq
 
 st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", layout="wide")
 
@@ -36,7 +35,7 @@ st.sidebar.subheader("Alt Rotation")
 target_alt_alloc = st.sidebar.slider("Target Alt allocation when signals fire (%)", 0, 100, 40)
 top_n_alts = st.sidebar.slider("Top N alts to scan (by market cap)", 10, 100, 50, 10)
 
-st.sidebar.caption("This dashboard pulls live data at runtime (CoinGecko, Alternative.me & Google Trends).")
+st.sidebar.caption("This dashboard pulls live data at runtime (CoinGecko & Alternative.me).")
 
 # =========================
 # Data Fetchers
@@ -115,19 +114,6 @@ def get_rsi_macd_volume():
     # Placeholder: in a real version fetch BTC price history and compute RSI/MACD/Volume divergence
     return 72, 0.002, False  # RSI, MACD hist divergence, volume divergence
 
-@st.cache_data(ttl=300)
-def get_google_trends(keywords=["Bitcoin","Ethereum"]):
-    try:
-        pytrends = TrendReq(hl='en-US', tz=0)
-        pytrends.build_payload(keywords, cat=0, timeframe='now 7-d', geo='', gprop='')
-        data = pytrends.interest_over_time()
-        if not data.empty:
-            return data
-        else:
-            return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
 # =========================
 # Signal Builder
 # =========================
@@ -145,12 +131,11 @@ def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
     sig["profit_mode"] = sig["dom_below_second"] or sig["greed_high"] or sig["RSI_overbought"] or sig["MACD_div"] or sig["Volume_div"]
     sig["full_exit_watch"] = sig["dom_below_second"] and sig["greed_high"]
     # Historical bull-run placeholders
-    sig["MVRV Z-Score"] = True
-    sig["SOPR LTH"] = True
-    sig["Exchange Inflow"] = False
-    sig["Pi Cycle Top"] = False
-    sig["Funding Rate"] = True
-    sig["Google Trends Spike"] = False  # placeholder, can implement spike detection
+    sig["MVRV_Z"] = True
+    sig["SOPR_LTH"] = True
+    sig["Exchange_Inflow"] = False
+    sig["Pi_Cycle_Top"] = False
+    sig["Funding_Rate"] = True
     return sig
 
 # =========================
@@ -195,25 +180,11 @@ except Exception as e:
 st.markdown("---")
 
 # =========================
-# Build Signals
+# Signals Panel with Explanations
 # =========================
 if btc_dom is not None and ethbtc is not None:
     sig = build_signals(btc_dom, ethbtc, fg_value, rsi, macd_div, vol_div)
 
-# =========================
-# Google Trends Integration
-# =========================
-trends_df = get_google_trends()
-if not trends_df.empty:
-    st.subheader("📈 Google Trends (7-day)")
-    st.line_chart(trends_df.drop(columns=['isPartial']))
-    # Spike detection placeholder
-    if (trends_df.max() - trends_df.min()).max() > 50:  # simple spike
-        sig["Google Trends Spike"] = True
-
-# =========================
-# Key Market Signals Panel
-# =========================
 signal_defs = {
     "Dom < First Break": {
         "active": sig.get("dom_below_first"),
@@ -254,10 +225,6 @@ signal_defs = {
     "Full Exit Watch": {
         "active": sig.get("full_exit_watch"),
         "desc": "Extreme signal → consider exiting major positions."
-    },
-    "Google Trends Spike": {
-        "active": sig.get("Google Trends Spike"),
-        "desc": "High search interest → increased market attention."
     }
 }
 
@@ -310,43 +277,36 @@ if use_trailing and btc_price:
         st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
-# Altcoin Dashboard Top N
+# Altcoin Dashboard Top 30
 # =========================
 st.markdown("---")
-st.header(f"🔥 Altcoin Momentum & Rotation Dashboard (Top {top_n_alts})")
-alt_df = get_top_alts_safe(top_n_alts)
+st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top 30)")
+
+alt_df = get_top_alts_safe(50)
 if not alt_df.empty:
-    alt_df = alt_df.sort_values(by='7d %', ascending=False).head(top_n_alts)
+    alt_df = alt_df.sort_values(by='7d %', ascending=False).head(30)
     min_7d = alt_df['7d %'].min()
     max_7d = alt_df['7d %'].max()
-    alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(
-        lambda x: round(100*(x-min_7d)/(max_7d-min_7d),2) if pd.notnull(x) else 0)
+    alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(lambda x: round(100*(x-min_7d)/(max_7d-min_7d),2) if pd.notnull(x) else 0)
     alt_df['Suggested Action'] = ['✅ Rotate In' if sig.get('rotate_to_alts') else '⚠️ Wait']*len(alt_df)
 
-    chart_option = st.selectbox("Select Altcoin Chart", 
-                                ["Rotation Score (%)", "7-Day % Price Change", 
-                                 "Market Cap vs 7-Day % Change Bubble"])
+    chart_option = st.selectbox("Select Altcoin Chart", ["Rotation Score (%)", "7-Day % Price Change", "Market Cap vs 7-Day % Change Bubble"])
 
     if chart_option == "Rotation Score (%)":
-        fig = px.bar(alt_df, x='Coin', y='Rotation Score (%)', color='Rotation Score (%)', 
-                     color_continuous_scale='RdYlGn', title="Rotation Score (%) by Altcoin")
+        fig = px.bar(alt_df, x='Coin', y='Rotation Score (%)', color='Rotation Score (%)', color_continuous_scale='RdYlGn', title="Rotation Score (%) by Altcoin")
     elif chart_option == "7-Day % Price Change":
-        fig = px.bar(alt_df, x='Coin', y='7d %', color='7d %', text='7d %', 
-                     color_continuous_scale='RdYlGn', title="7-Day % Price Change")
+        fig = px.bar(alt_df, x='Coin', y='7d %', color='7d %', color_continuous_scale='RdYlGn', text='7d %', title="7-Day % Price Change")
     else:
-        fig = px.scatter(alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %', 
-                         hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60, 
-                         title="Market Cap vs 7-Day % Change Bubble")
+        fig = px.scatter(alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %', hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60, title="Market Cap vs 7-Day % Change Bubble")
         fig.update_layout(xaxis_title="Market Cap ($B)", yaxis_title="7-Day % Change")
 
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.warning(f"No altcoin data available for top {top_n_alts}.")
+    st.warning("No altcoin data available for top 30.")
 
 # =========================
 # Signals Detail Panel (Expanded)
 # =========================
-st.markdown("---")
 st.subheader("🔍 Signals Detail")
 signal_defs_expanded = {
     "Dom < First Break": {"desc": "BTC losing market share → altcoins may start moving up."},
@@ -363,8 +323,7 @@ signal_defs_expanded = {
     "SOPR LTH": {"desc": "Long-term holder SOPR > 1.5 → high profit taking."},
     "Exchange Inflow": {"desc": "Exchange inflows spike → whales moving BTC to exchanges."},
     "Pi Cycle Top": {"desc": "Pi Cycle Top indicator intersects price → major top possible."},
-    "Funding Rate": {"desc": "Perpetual funding > 0.2% long → market over-leveraged."},
-    "Google Trends Spike": {"desc": "High search interest → increased market attention."}
+    "Funding Rate": {"desc": "Perpetual funding > 0.2% long → market over-leveraged."}
 }
 
 for sig_name, sig_info in signal_defs_expanded.items():
