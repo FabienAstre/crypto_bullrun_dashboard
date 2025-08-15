@@ -360,19 +360,38 @@ if not alt_df.empty:
 else:
     st.warning("No altcoin data available for top 30.")
 # =========================
-# Signals Detail Panel
+# Signals Detail Panel (Expanded)
 # =========================
 st.subheader("🔍 Signals Detail")
 
-for sig_name, sig_info in signal_defs.items():
-    # Determine status
-    active = sig.get(sig_name)  # True/False or numeric
+# Define all signals with human-readable descriptions
+signal_defs_expanded = {
+    "Dom < First Break": {"desc": "BTC losing market share → altcoins may start moving up."},
+    "Dom < Strong Confirm": {"desc": "Confirms major rotation into altcoins → potential altseason."},
+    "ETH/BTC Breakout": {"desc": "ETH outperforming BTC → bullish for ETH and altcoins."},
+    "F&G ≥ 80": {"desc": "Extreme greed → market may be overbought."},
+    "RSI > 70": {"desc": "BTC overbought → possible short-term correction."},
+    "MACD Divergence": {"desc": "Momentum slowing → potential reversal."},
+    "Volume Divergence": {"desc": "Weak price movement → caution on trend continuation."},
+    "Rotate to Alts": {"desc": "Strong rotation signal → move funds into altcoins."},
+    "Profit Mode": {"desc": "Suggests scaling out of positions / taking profit."},
+    "Full Exit Watch": {"desc": "Extreme signal → consider exiting major positions."},
+    # Add more signals here if needed
+    "MVRV Z-Score": {"desc": "BTC historically overvalued when MVRV Z > 7."},
+    "SOPR LTH": {"desc": "Long-term holder SOPR > 1.5 → high profit taking."},
+    "Exchange Inflow": {"desc": "Exchange inflows spike → whales moving BTC to exchanges."},
+    "Pi Cycle Top": {"desc": "Pi Cycle Top indicator intersects price → major top possible."},
+    "Funding Rate": {"desc": "Perpetual funding > 0.2% long → market over-leveraged."}
+}
+
+# Display each signal with green/red dot and description
+for sig_name, sig_info in signal_defs_expanded.items():
+    active = sig.get(sig_name, False)  # Fallback to False if missing
+    # Handle numeric signals (like MACD Divergence)
     if isinstance(active, (int, float)):
         status = "🟢" if active else "🔴"
     else:
         status = "🟢" if active else "🔴"
+    
+    st.markdown(f"{status} **{sig_name}** - {sig_info['desc']}")
 
-    # Get description
-    desc = sig_info.get('desc', '')
-
-    st.markdown(f"{status} **{sig_name}** - {desc}")
