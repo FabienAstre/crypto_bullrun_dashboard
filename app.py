@@ -42,7 +42,7 @@ top_n_alts = st.sidebar.slider("Top N alts to scan (by market cap)", 10, 100, 50
 st.sidebar.caption("This dashboard pulls live data at runtime (CoinGecko & Alternative.me).")
 
 # =========================
-# Data Fetchers (Crash-Proof)
+# Data Fetchers
 # =========================
 @st.cache_data(ttl=300)
 def get_global():
@@ -107,86 +107,98 @@ def get_top_alts_safe(n=50):
         r.raise_for_status()
         data = [x for x in r.json() if x["symbol"].upper() not in ("BTC","ETH")][:n]
         df = pd.DataFrame([{
-            "Rank": x.get("market_cap_rank",0),
+            "Rank": x["market_cap_rank"],
             "Coin": x["symbol"].upper(),
             "Name": x["name"],
-            "Price ($)": x.get("current_price",np.nan),
-            "24h %": x.get("price_change_percentage_24h_in_currency",np.nan),
-            "7d %": x.get("price_change_percentage_7d_in_currency",np.nan),
-            "Mkt Cap ($B)": (x.get("market_cap",0))/1e9
+            "Price ($)": x["current_price"],
+            "24h %": x.get("price_change_percentage_24h_in_currency"),
+            "7d %": x.get("price_change_percentage_7d_in_currency"),
+            "Mkt Cap ($B)": (x["market_cap"] or 0)/1e9
         } for x in data])
         return df
     except:
         return pd.DataFrame()
 
-@st.cache_data(ttl=120)
-def get_rsi_macd_volume():
-    # Placeholder: in a real version fetch BTC price history and compute RSI/MACD/Volume divergence
-    return 72, 0.002, False  # RSI, MACD hist divergence, volume divergence
+@st.cache_data(ttl=300)
+def get_btc_history(days=365):
+    """Fetch BTC daily OHLC from CoinGecko for indicators like RSI, MACD, Pi Cycle"""
+    try:
+        r = requests.get(f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+                         params={"vs_currency":"usd","days":days,"interval":"daily"}, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        df = pd.DataFrame(data["prices"], columns=["timestamp","close"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit='ms')
+        df["close"] = df["close"].astype(float)
+        df.set_index("timestamp", inplace=True)
+        df["MA111"] = df["close"].rolling(window=111).mean()
+        df["MA350"] = df["close"].rolling(window=350).mean()
+        delta = df["close"].diff()
+        up, down = delta.clip(lower=0), -delta.clip(upper=0)
+        roll_up = up.rolling(14).mean()
+        roll_down = down.rolling(14).mean()
+        df["RSI"] = 100 - 100/(1 + roll_up/roll_down)
+        df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
+        df["Signal"] = df["MACD"].ewm(span=9).mean()
+        return df
+    except:
+        return pd.DataFrame()
 
 # =========================
-# Signals Builder
+# Build Signals
 # =========================
-def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
+def build_signals_live(dom, ethbtc, fg_value, btc_hist):
     sig = {}
-    try:
-        sig["Dom < First Break"] = dom is not None and dom < dom_first
-    except:
-        sig["Dom < First Break"] = False
-    try:
-        sig["Dom < Strong Confirm"] = dom is not None and dom < dom_second
-    except:
-        sig["Dom < Strong Confirm"] = False
-    try:
-        sig["ETH/BTC Breakout"] = ethbtc is not None and ethbtc > ethbtc_break
-    except:
-        sig["ETH/BTC Breakout"] = False
+    # Dominance & ETH/BTC
+    sig["Dom < First Break"] = dom is not None and dom < dom_first
+    sig["Dom < Strong Confirm"] = dom is not None and dom < dom_second
+    sig["ETH/BTC Breakout"] = ethbtc is not None and ethbtc > ethbtc_break
+    # Fear & Greed
     sig["F&G ≥ 80"] = fg_value is not None and fg_value >= 80
-    sig["RSI > 70"] = rsi is not None and rsi > 70
-    sig["MACD Divergence"] = macd_div
-    sig["Volume Divergence"] = vol_div
-
-    sig["Rotate to Alts"] = sig.get("Dom < First Break", False) and sig.get("ETH/BTC Breakout", False)
-    sig["Profit Mode"] = sig.get("Dom < Strong Confirm", False) or sig.get("F&G ≥ 80", False) or sig.get("RSI > 70", False) or sig.get("MACD Divergence", False) or sig.get("Volume Divergence", False)
-    sig["Full Exit Watch"] = sig.get("Dom < Strong Confirm", False) and sig.get("F&G ≥ 80", False)
-
-    # Fill placeholder signals safely
-    for extra in ["MVRV Z-Score","SOPR LTH","Exchange Inflow","Pi Cycle Top","Funding Rate"]:
-        sig[extra] = True if extra in ["MVRV Z-Score","SOPR LTH","Funding Rate"] else False
-
+    # RSI / MACD
+    if not btc_hist.empty:
+        sig["RSI > 70"] = btc_hist["RSI"].iloc[-1] > 70
+        sig["MACD Divergence"] = btc_hist["MACD"].iloc[-1] < btc_hist["Signal"].iloc[-1]
+        sig["Pi Cycle Top"] = btc_hist["MA111"].iloc[-1] > btc_hist["MA350"].iloc[-1]
+    else:
+        sig["RSI > 70"] = False
+        sig["MACD Divergence"] = False
+        sig["Pi Cycle Top"] = False
+    # Rotation / profit
+    sig["Rotate to Alts"] = sig["Dom < First Break"] and sig["ETH/BTC Breakout"]
+    sig["Profit Mode"] = sig["Dom < Strong Confirm"] or sig["F&G ≥ 80"] or sig["RSI > 70"] or sig["MACD Divergence"]
+    sig["Full Exit Watch"] = sig["Dom < Strong Confirm"] and sig["F&G ≥ 80"]
+    # Placeholder signals for Exchange / SOPR / Funding
+    sig["SOPR LTH"] = True
+    sig["MVRV Z-Score"] = True
+    sig["Exchange Inflow"] = True
+    sig["Funding Rate"] = True
     return sig
 
 # =========================
 # Header Metrics
 # =========================
 col1, col2, col3, col4 = st.columns(4)
-
 g = get_global()
-btc_dom = float(g["data"]["market_cap_percentage"]["btc"]) if g and "data" in g else None
-btc_dom_display = f"{btc_dom:.2f}" if btc_dom else "N/A"
-col1.metric("BTC Dominance (%)", btc_dom_display)
-
+btc_dom = float(g["data"]["market_cap_percentage"]["btc"]) if g else None
+col1.metric("BTC Dominance (%)", f"{btc_dom:.2f}" if btc_dom else "N/A")
 ethbtc = get_ethbtc()
-ethbtc_display = f"{ethbtc:.6f}" if ethbtc else "N/A"
-col2.metric("ETH/BTC", ethbtc_display)
-
+col2.metric("ETH/BTC", f"{ethbtc:.6f}" if ethbtc else "N/A")
 fg_value, fg_label = get_fear_greed()
 col3.metric("Fear & Greed", f"{fg_value} ({fg_label})" if fg_value else "N/A")
-
 prices = get_prices_usd(["bitcoin","ethereum"])
 btc_price = prices.get("bitcoin",{}).get("usd")
 eth_price = prices.get("ethereum",{}).get("usd")
 col4.metric("BTC / ETH ($)", f"{btc_price:,.0f} / {eth_price:,.0f}" if btc_price and eth_price else "N/A")
 
-rsi, macd_div, vol_div = get_rsi_macd_volume()
-sig = build_signals(btc_dom, ethbtc, fg_value, rsi, macd_div, vol_div)
+btc_hist = get_btc_history(days=365)
+sig = build_signals_live(btc_dom, ethbtc, fg_value, btc_hist)
 
 # =========================
 # Signals Panel
 # =========================
 st.markdown("---")
 st.markdown("### 📊 Key Market Signals & Explanations")
-
 signal_descriptions = {
     "Dom < First Break": "BTC losing market share → altcoins may start moving up.",
     "Dom < Strong Confirm": "Confirms major rotation into altcoins → potential altseason.",
@@ -194,14 +206,13 @@ signal_descriptions = {
     "F&G ≥ 80": "Extreme greed → market may be overbought.",
     "RSI > 70": "BTC overbought → possible short-term correction.",
     "MACD Divergence": "Momentum slowing → potential reversal.",
-    "Volume Divergence": "Weak price movement → caution on trend continuation.",
+    "Pi Cycle Top": "MA111 > MA350 → potential market top.",
     "Rotate to Alts": "Strong rotation signal → move funds into altcoins.",
     "Profit Mode": "Suggests scaling out of positions / taking profit.",
     "Full Exit Watch": "Extreme signal → consider exiting major positions.",
     "MVRV Z-Score": "BTC historically overvalued when MVRV Z > 7.",
     "SOPR LTH": "Long-term holder SOPR > 1.5 → high profit taking.",
     "Exchange Inflow": "Exchange inflows spike → whales moving BTC to exchanges.",
-    "Pi Cycle Top": "Pi Cycle Top indicator intersects price → major top possible.",
     "Funding Rate": "Perpetual funding > 0.2% long → market over-leveraged."
 }
 
@@ -211,15 +222,14 @@ for i in range(0, len(signal_items), cols_per_row):
     cols = st.columns(min(cols_per_row, len(signal_items)-i))
     for j, (name, desc) in enumerate(signal_items[i:i+cols_per_row]):
         active = sig.get(name, False)
-        status_emoji = "🟢" if active else "🔴"
+        status_emoji = "🟢" if bool(active) else "🔴"
         cols[j].markdown(f"{status_emoji} **{name}**  \n{desc}")
 
 # =========================
-# Profit Ladder Planner
+# Profit Ladder
 # =========================
 st.markdown("---")
 st.header("🎯 Profit-Taking Ladder")
-
 def build_ladder(entry, step_pct, sell_pct, max_steps):
     rows = []
     if entry <= 0:
@@ -236,7 +246,6 @@ def build_ladder(entry, step_pct, sell_pct, max_steps):
 
 btc_ladder = build_ladder(entry_btc, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
 eth_ladder = build_ladder(entry_eth, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
-
 cL, cR = st.columns(2)
 with cL:
     st.subheader("BTC Ladder")
