@@ -359,33 +359,20 @@ if not alt_df.empty:
 
 else:
     st.warning("No altcoin data available for top 30.")
-
 # =========================
-# Signal Confluence Summary
+# Signals Detail Panel
 # =========================
-st.markdown("---")
-st.header("🔔 Signal Confluence Summary")
+st.subheader("🔍 Signals Detail")
 
-if sig:
-    all_signals = list(signal_defs.keys())
-    active_signals_list = [s for s in all_signals if sig.get(s)]
-    inactive_signals_list = [s for s in all_signals if not sig.get(s)]
-    active_signals_count = len(active_signals_list)
-
-    # Display active/inactive signals with explanations
-    st.subheader("🔍 Signals Detail")
-    for s in all_signals:
-        status_emoji = "🟢" if sig.get(s) else "🔴"
-        st.markdown(f"{status_emoji} **{s}** - {signal_defs[s]}")
-
-    # Summary
-    st.markdown("---")
-    st.write(f"**Active Signals: {active_signals_count}/{len(all_signals)}**")
-
-    # Confluence guidance
-    if active_signals_count >= 7:
-        st.warning("High confluence! Consider scaling out or rotating to altcoins. 🔔")
-    elif active_signals_count >= 4:
-        st.info("Moderate confluence. Partial profit-taking advised. ⚠️")
+for sig_name, sig_info in signal_defs.items():
+    # Determine status
+    active = sig.get(sig_name)  # True/False or numeric
+    if isinstance(active, (int, float)):
+        status = "🟢" if active else "🔴"
     else:
-        st.success("Low confluence. Market still bullish. ✅")
+        status = "🟢" if active else "🔴"
+
+    # Get description
+    desc = sig_info.get('desc', '')
+
+    st.markdown(f"{status} **{sig_name}** - {desc}")
