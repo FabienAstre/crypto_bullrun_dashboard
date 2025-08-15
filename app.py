@@ -3,10 +3,8 @@ import time
 import requests
 import pandas as pd
 import streamlit as st
-import datetime
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 
 st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", layout="wide")
 
@@ -15,13 +13,13 @@ st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", lay
 # =========================
 st.sidebar.header("Dashboard Parameters")
 
-# --- Dominance & ETH/BTC ---
+# Dominance & ETH/BTC
 st.sidebar.subheader("Dominance & ETH/BTC Triggers")
 dom_first = st.sidebar.number_input("BTC Dominance: 1st break (%)", 0.0, 100.0, 58.29, 0.01, format="%.2f")
 dom_second = st.sidebar.number_input("BTC Dominance: strong confirm (%)", 0.0, 100.0, 54.66, 0.01, format="%.2f")
 ethbtc_break = st.sidebar.number_input("ETH/BTC breakout level", 0.0, 1.0, 0.054, 0.001, format="%.3f")
 
-# --- Profit Ladder ---
+# Profit Ladder
 st.sidebar.subheader("Profit-Taking Plan")
 entry_btc = st.sidebar.number_input("Your BTC average entry ($)", 0.0, 1000000.0, 40000.0, 100.0)
 entry_eth = st.sidebar.number_input("Your ETH average entry ($)", 0.0, 1000000.0, 2000.0, 10.0)
@@ -29,12 +27,12 @@ ladder_step_pct = st.sidebar.slider("Take profit every X% gain", 1, 50, 10)
 sell_pct_per_step = st.sidebar.slider("Sell Y% each step", 1, 50, 10)
 max_ladder_steps = st.sidebar.slider("Max ladder steps", 1, 30, 8)
 
-# --- Trailing Stop ---
+# Trailing Stop
 st.sidebar.subheader("Trailing Stop (Optional)")
 use_trailing = st.sidebar.checkbox("Enable trailing stop", value=True)
 trail_pct = st.sidebar.slider("Trailing stop (%)", 5, 50, 20)
 
-# --- Alt Rotation ---
+# Alt Rotation
 st.sidebar.subheader("Alt Rotation")
 target_alt_alloc = st.sidebar.slider("Target Alt allocation when signals fire (%)", 0, 100, 40)
 top_n_alts = st.sidebar.slider("Top N alts to scan (by market cap)", 10, 100, 50, 10)
@@ -50,33 +48,27 @@ def get_global():
         r = requests.get("https://api.coingecko.com/api/v3/global", timeout=20)
         r.raise_for_status()
         return r.json()
-    except Exception:
+    except:
         return None
 
 @st.cache_data(ttl=300)
 def get_ethbtc():
     try:
-        r = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids":"ethereum","vs_currencies":"btc"},
-            timeout=20
-        )
+        r = requests.get("https://api.coingecko.com/api/v3/simple/price",
+                         params={"ids":"ethereum","vs_currencies":"btc"}, timeout=20)
         r.raise_for_status()
         return float(r.json()["ethereum"]["btc"])
-    except Exception:
+    except:
         return None
 
 @st.cache_data(ttl=300)
 def get_prices_usd(ids):
     try:
-        r = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids": ",".join(ids), "vs_currencies": "usd"},
-            timeout=20
-        )
+        r = requests.get("https://api.coingecko.com/api/v3/simple/price",
+                         params={"ids": ",".join(ids), "vs_currencies": "usd"}, timeout=20)
         r.raise_for_status()
         return r.json()
-    except Exception:
+    except:
         return {}
 
 @st.cache_data(ttl=300)
@@ -86,24 +78,16 @@ def get_fear_greed():
         r.raise_for_status()
         data = r.json()["data"][0]
         return int(data["value"]), data["value_classification"]
-    except Exception:
+    except:
         return None, None
 
 @st.cache_data(ttl=300)
 def get_top_alts_safe(n=50):
     try:
-        r = requests.get(
-            "https://api.coingecko.com/api/v3/coins/markets",
-            params={
-                "vs_currency": "usd",
-                "order": "market_cap_desc",
-                "per_page": n+10,
-                "page": 1,
-                "sparkline": "false",
-                "price_change_percentage": "24h,7d"
-            },
-            timeout=20
-        )
+        r = requests.get("https://api.coingecko.com/api/v3/coins/markets",
+                         params={"vs_currency":"usd","order":"market_cap_desc",
+                                 "per_page": n+10, "page":1, "sparkline":"false",
+                                 "price_change_percentage":"24h,7d"}, timeout=20)
         r.raise_for_status()
         data = [x for x in r.json() if x["symbol"].upper() not in ("BTC","ETH")][:n]
         df = pd.DataFrame([{
@@ -116,7 +100,7 @@ def get_top_alts_safe(n=50):
             "Mkt Cap ($B)": (x["market_cap"] or 0)/1e9
         } for x in data])
         return df
-    except Exception:
+    except:
         return pd.DataFrame()
 
 @st.cache_data(ttl=120)
@@ -139,11 +123,10 @@ def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
     sig["Rotate to Alts"] = sig["Dom < First Break"] and sig["ETH/BTC Breakout"]
     sig["Profit Mode"] = sig["Dom < Strong Confirm"] or sig["F&G ≥ 80"] or sig["RSI > 70"] or sig["MACD Divergence"] or sig["Volume Divergence"]
     sig["Full Exit Watch"] = sig["Dom < Strong Confirm"] and sig["F&G ≥ 80"]
-    
+
     # Fill placeholder signals
     for extra in ["MVRV Z-Score","SOPR LTH","Exchange Inflow","Pi Cycle Top","Funding Rate"]:
         sig[extra] = True if extra in ["MVRV Z-Score","SOPR LTH","Funding Rate"] else False
-    
     return sig
 
 # =========================
@@ -153,12 +136,10 @@ col1, col2, col3, col4 = st.columns(4)
 
 g = get_global()
 btc_dom = float(g["data"]["market_cap_percentage"]["btc"]) if g else None
-btc_dom_display = f"{btc_dom:.2f}" if btc_dom else "N/A"
-col1.metric("BTC Dominance (%)", btc_dom_display)
+col1.metric("BTC Dominance (%)", f"{btc_dom:.2f}" if btc_dom else "N/A")
 
 ethbtc = get_ethbtc()
-ethbtc_display = f"{ethbtc:.6f}" if ethbtc else "N/A"
-col2.metric("ETH/BTC", ethbtc_display)
+col2.metric("ETH/BTC", f"{ethbtc:.6f}" if ethbtc else "N/A")
 
 fg_value, fg_label = get_fear_greed()
 col3.metric("Fear & Greed", f"{fg_value} ({fg_label})" if fg_value else "N/A")
@@ -174,7 +155,7 @@ sig = build_signals(btc_dom, ethbtc, fg_value, rsi, macd_div, vol_div)
 st.markdown("---")
 
 # =========================
-# Interactive Key Signals with Tooltips
+# Interactive Key Signals with hover
 # =========================
 signal_explanations = {
     "Dom < First Break": "BTC losing market share → altcoins may start moving up.",
@@ -194,22 +175,29 @@ signal_explanations = {
     "Funding Rate": "Perpetual funding > 0.2% long → market over-leveraged."
 }
 
-st.markdown("### 📊 Key Market Signals (Hover for explanation)")
-signal_df = pd.DataFrame([
-    {"Signal": name, "Active": "🟢" if active else "🔴", "Explanation": signal_explanations.get(name,"")}
-    for name, active in sig.items()
-])
+signals_list = list(sig.items())
+hover_data = pd.DataFrame({
+    "x": list(range(len(signals_list))),
+    "y": [1]*len(signals_list),
+    "Signal": [name for name, _ in signals_list],
+    "Status": ["🟢" if active else "🔴" for _, active in signals_list],
+    "Explanation": [signal_explanations.get(name,"") for name, _ in signals_list]
+})
 
-# Plotly Table for interactive tooltips
-fig = go.Figure(data=[go.Table(
-    header=dict(values=["Signal", "Status"],
-                fill_color='paleturquoise', align='left'),
-    cells=dict(values=[signal_df["Signal"], signal_df["Active"]],
-               fill_color='lavender',
-               align='left',
-               hovertext=signal_df["Explanation"],
-               hoverinfo="text"))])
-fig.update_layout(height=300)
+fig = px.scatter(
+    hover_data,
+    x="x",
+    y="y",
+    text="Status",
+    hover_name="Signal",
+    hover_data={"Explanation":True, "x":False, "y":False},
+    color="Status",
+    color_discrete_map={"🟢":"green","🔴":"red"},
+    size=[20]*len(hover_data)
+)
+fig.update_traces(textposition="top center", marker=dict(size=40, symbol="circle"))
+fig.update_layout(yaxis=dict(visible=False), xaxis=dict(visible=False), height=300,
+                  title="📊 Key Market Signals (Hover for explanation)", showlegend=False)
 st.plotly_chart(fig, use_container_width=True)
 
 # =========================
@@ -244,7 +232,7 @@ with cR:
     st.dataframe(eth_ladder,use_container_width=True)
 
 # =========================
-# Dynamic Trailing Stops
+# Trailing Stops
 # =========================
 if use_trailing and btc_price:
     st.markdown("---")
@@ -264,24 +252,20 @@ st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top N)")
 alt_df = get_top_alts_safe(top_n_alts)
 if not alt_df.empty:
     alt_df = alt_df.sort_values(by='7d %', ascending=False).head(30)
-    # Rotation score: combine 7d %, 24h %, scale 0-100
-    min_val = alt_df[['7d %','24h %']].min().min()
-    max_val = alt_df[['7d %','24h %']].max().max()
-    alt_df['Rotation Score (%)'] = alt_df.apply(
-        lambda x: round(50*(x['7d %']-min_val)/(max_val-min_val)+50*(x['24h %']-min_val)/(max_val-min_val),2),
-        axis=1
-    )
+    min_7d = alt_df['7d %'].min()
+    max_7d = alt_df['7d %'].max()
+    alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(lambda x: round(100*(x-min_7d)/(max_7d-min_7d),2) if pd.notnull(x) else 0)
     alt_df['Suggested Action'] = ['✅ Rotate In' if sig.get('Rotate to Alts') else '⚠️ Wait']*len(alt_df)
 
     chart_option = st.selectbox("Select Altcoin Chart", ["Rotation Score (%)", "7-Day % Price Change", "Market Cap vs 7-Day % Change Bubble"])
-
     if chart_option == "Rotation Score (%)":
         fig = px.bar(alt_df, x='Coin', y='Rotation Score (%)', color='Rotation Score (%)',
                      color_continuous_scale='RdYlGn', title="Rotation Score (%) by Altcoin")
     elif chart_option == "7-Day % Price Change":
         fig = px.bar(alt_df, x='Coin', y='7d %', color='7d %', color_continuous_scale='RdYlGn', text='7d %', title="7-Day % Price Change")
     else:
-        fig = px.scatter(alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %', hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60, title="Market Cap vs 7-Day % Change Bubble")
+        fig = px.scatter(alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %',
+                         hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60, title="Market Cap vs 7-Day % Change Bubble")
         fig.update_layout(xaxis_title="Market Cap ($B)", yaxis_title="7-Day % Change")
     st.plotly_chart(fig, use_container_width=True)
 else:
