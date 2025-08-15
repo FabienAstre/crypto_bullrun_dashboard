@@ -8,6 +8,12 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import yfinance as yf
+try:
+    import yfinance as yf
+except ModuleNotFoundError:
+    st.error("yfinance is not installed. Please check requirements.txt and reinstall dependencies.")
+    st.stop()
+
 
 st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", layout="wide")
 
