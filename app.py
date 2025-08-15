@@ -277,7 +277,7 @@ if use_trailing and btc_price:
         st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
-# Altcoin Dashboard Top 30
+# Altcoin Dashboard Top 30 (Single Graph with Dropdown)
 # =========================
 st.markdown("---")
 st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top 30)")
@@ -291,14 +291,17 @@ if not alt_df.empty:
     alt_df['7d MA'] = alt_df['Price ($)'].rolling(7, min_periods=1).mean()
     alt_df['Suggested Action'] = ['✅ Rotate In' if sig.get('rotate_to_alts') else '⚠️ Wait']*len(alt_df)
 
-    fig1 = px.bar(alt_df, x='Coin', y='Rotation Score (%)', color='Rotation Score (%)', color_continuous_scale='RdYlGn', title="Rotation Score (%) by Altcoin")
-    fig2 = px.line(alt_df, x='Coin', y='7d MA', title="7-Day Moving Average Price", markers=True)
-    fig3 = px.bar(alt_df, x='Coin', y='7d %', color='7d %', color_continuous_scale='RdYlGn', text='7d %', title="7-Day % Price Change")
-    
-    col1, col2, col3 = st.columns(3)
-    col1.plotly_chart(fig1, use_container_width=True)
-    col2.plotly_chart(fig2, use_container_width=True)
-    col3.plotly_chart(fig3, use_container_width=True)
+    # Dropdown for chart selection
+    chart_option = st.selectbox("Select Altcoin Chart", ["Rotation Score (%)", "7-Day Moving Average", "7-Day % Price Change"])
+
+    if chart_option == "Rotation Score (%)":
+        fig = px.bar(alt_df, x='Coin', y='Rotation Score (%)', color='Rotation Score (%)', color_continuous_scale='RdYlGn', title="Rotation Score (%) by Altcoin")
+    elif chart_option == "7-Day Moving Average":
+        fig = px.line(alt_df, x='Coin', y='7d MA', title="7-Day Moving Average Price", markers=True)
+    else:
+        fig = px.bar(alt_df, x='Coin', y='7d %', color='7d %', color_continuous_scale='RdYlGn', text='7d %', title="7-Day % Price Change")
+
+    st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("⚡ Top Rotation Picks")
     st.dataframe(
@@ -307,6 +310,7 @@ if not alt_df.empty:
     )
 else:
     st.warning("No altcoin data available for top 30.")
+
 
 # =========================
 # Signal Confluence Summary
