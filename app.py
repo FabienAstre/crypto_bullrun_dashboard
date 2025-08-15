@@ -395,58 +395,40 @@ for sig_name, sig_info in signal_defs_expanded.items():
         status = "🟢" if active else "🔴"
     
     st.markdown(f"{status} **{sig_name}** - {sig_info['desc']}")
+import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import requests
 import streamlit as st
-
 
 st.header("🌈 BTC Rainbow Chart")
 
-# =========================
-# Fetch BTC historical data via Yahoo Finance
-# =========================
 @st.cache_data(ttl=3600)
-def get_btc_history_yf():
-    try:
-        df = yf.download("BTC-USD", start="2010-07-17")
-        df.reset_index(inplace=True)
-        df = df[["Date", "Close"]].rename(columns={"Date": "date", "Close": "price"})
-        return df
-    except Exception as e:
-        st.error(f"Error fetching BTC data: {e}")
+def get_btc_history(start="2010-07-17"):
+    btc = yf.download("BTC-USD", start=start, progress=False)
+    if btc.empty:
         return pd.DataFrame()
+    btc.reset_index(inplace=True)
+    btc = btc[["Date", "Close"]].rename(columns={"Date": "date", "Close": "price"})
+    return btc
 
-btc_data = get_btc_history_yf()
+btc_data = get_btc_history()
 
-# =========================
-# Plot Rainbow Chart
-# =========================
 if not btc_data.empty:
-    # Rainbow bands (log scale)
     colors = [
         "#ff0000", "#ff4500", "#ff8c00", "#ffd700", "#7fff00",
         "#00ff00", "#00fa9a", "#00ced1", "#1e90ff", "#9400d3"
     ]
-    labels = [
-        "Maximum Bubble", "Sell Zone", "High Risk", "Overvalued", 
-        "Fairly Priced", "Neutral", "Accumulation Zone", "Bargain", 
-        "Deep Bargain", "Buy Zone"
-    ]
-
     log_min = np.log(btc_data["price"].min())
     log_max = np.log(btc_data["price"].max())
     log_range = log_max - log_min
 
     bands = pd.DataFrame({
-        "y0": np.exp(log_min + np.array(range(len(colors))) / len(colors) * log_range),
-        "y1": np.exp(log_min + (np.array(range(1, len(colors)+1)) / len(colors)) * log_range),
-        "color": colors,
-        "label": labels
+        "y0": np.exp(log_min + np.arange(len(colors)) / len(colors) * log_range),
+        "y1": np.exp(log_min + (np.arange(1, len(colors)+1) / len(colors)) * log_range),
+        "color": colors
     })
 
-    # Plot BTC price
     fig = px.line(btc_data, x="date", y="price", title="Bitcoin Rainbow Chart")
     for _, row in bands.iterrows():
         fig.add_shape(
@@ -457,11 +439,11 @@ if not btc_data.empty:
             y1=row["y1"],
             fillcolor=row["color"],
             opacity=0.3,
-            line_width=0,
+            line_width=0
         )
 
     fig.update_yaxes(type="log", title="BTC Price (log scale)")
     fig.update_xaxes(title="Date")
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.warning("BTC historical data unavailable. Rainbow chart cannot be displayed.")
+    st.warning("BTC historical data unavailable.")
