@@ -208,6 +208,67 @@ for i, s in enumerate(signal_names):
     status = sig[s]
     cols[i].markdown(f"**{s}**: {'🟢' if status else '🔴'}")
     cols[i].caption(signal_desc[s])
+    # =========================
+# 🌈 Bitcoin Rainbow Chart
+# =========================
+st.header("🌈 Bitcoin Rainbow Chart")
+
+try:
+    # Fetch BTC historical prices (max range)
+    r = requests.get(
+        "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+        params={"vs_currency":"usd","days":"max","interval":"daily"},
+        timeout=20
+    )
+    r.raise_for_status()
+    data = r.json()
+    prices = pd.DataFrame(data["prices"], columns=["timestamp","price"])
+    prices["date"] = pd.to_datetime(prices["timestamp"], unit="ms")
+    prices.set_index("date", inplace=True)
+
+    # Logarithmic regression bands (approximation)
+    x = np.arange(len(prices))
+    prices["log_price"] = np.log(prices["price"])
+
+    # Create rainbow bands (offset from regression line)
+    base = np.poly1d(np.polyfit(x, prices["log_price"], 2))(x)
+    prices["low"] = np.exp(base - 1.6)
+    prices["mid_low"] = np.exp(base - 1.0)
+    prices["mid"] = np.exp(base - 0.5)
+    prices["mid_high"] = np.exp(base)
+    prices["high"] = np.exp(base + 0.5)
+    prices["bubble"] = np.exp(base + 1.0)
+
+    # Plot with Plotly
+    fig_rainbow = go.Figure()
+
+    # Bands
+    fig_rainbow.add_trace(go.Scatter(x=prices.index, y=prices["low"], line=dict(color="red"), name="Fire Sale", fill=None))
+    fig_rainbow.add_trace(go.Scatter(x=prices.index, y=prices["mid_low"], line=dict(color="orange"), name="Undervalued", fill="tonexty"))
+    fig_rainbow.add_trace(go.Scatter(x=prices.index, y=prices["mid"], line=dict(color="yellow"), name="Fair Value", fill="tonexty"))
+    fig_rainbow.add_trace(go.Scatter(x=prices.index, y=prices["mid_high"], line=dict(color="green"), name="Overvalued", fill="tonexty"))
+    fig_rainbow.add_trace(go.Scatter(x=prices.index, y=prices["high"], line=dict(color="blue"), name="Very Overvalued", fill="tonexty"))
+    fig_rainbow.add_trace(go.Scatter(x=prices.index, y=prices["bubble"], line=dict(color="purple"), name="Bubble Territory", fill="tonexty"))
+
+    # BTC price
+    fig_rainbow.add_trace(go.Scatter(
+        x=prices.index, y=prices["price"], mode="lines", name="BTC Price", line=dict(color="black", width=2)
+    ))
+
+    fig_rainbow.update_layout(
+        title="Bitcoin Rainbow Chart",
+        yaxis_type="log",
+        xaxis_title="Date",
+        yaxis_title="BTC Price (USD, log scale)",
+        hovermode="x unified",
+        legend=dict(orientation="h", y=-0.2)
+    )
+
+    st.plotly_chart(fig_rainbow, use_container_width=True)
+
+except Exception as e:
+    st.warning(f"Failed to fetch BTC rainbow chart: {e}")
+
 
 # =========================
 # Profit Ladder Planner
