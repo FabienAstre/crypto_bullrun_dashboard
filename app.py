@@ -91,7 +91,6 @@ def get_fear_greed():
 
 @st.cache_data(ttl=300)
 def get_top_alts_safe(n=50):
-    """Get top n altcoins (excluding BTC and ETH), returns DataFrame."""
     try:
         r = requests.get(
             "https://api.coingecko.com/api/v3/coins/markets",
@@ -122,8 +121,7 @@ def get_top_alts_safe(n=50):
 
 @st.cache_data(ttl=120)
 def get_rsi_macd_volume():
-    # Placeholder: in a real version fetch BTC price history and compute RSI/MACD/Volume divergence
-    return 72, 0.002, False  # RSI, MACD hist divergence, volume divergence
+    return 72, 0.002, False  # Placeholder: RSI, MACD hist divergence, volume divergence
 
 # =========================
 # Signals Builder
@@ -176,15 +174,43 @@ sig = build_signals(btc_dom, ethbtc, fg_value, rsi, macd_div, vol_div)
 st.markdown("---")
 
 # =========================
-# Signals Panel (Multi-row)
+# Interactive Key Signals with Tooltips
 # =========================
-st.markdown("### 📊 Key Market Signals")
-signal_items = list(sig.items())
-for i in range(0, len(signal_items), 5):
-    cols = st.columns(min(5, len(signal_items)-i))
-    for j, (name, active) in enumerate(signal_items[i:i+5]):
-        emoji = "🟢" if active else "🔴"
-        cols[j].markdown(f"**{name}** {emoji}")
+signal_explanations = {
+    "Dom < First Break": "BTC losing market share → altcoins may start moving up.",
+    "Dom < Strong Confirm": "Confirms major rotation into altcoins → potential altseason.",
+    "ETH/BTC Breakout": "ETH outperforming BTC → bullish for ETH and altcoins.",
+    "F&G ≥ 80": "Extreme greed → market may be overbought.",
+    "RSI > 70": "BTC overbought → possible short-term correction.",
+    "MACD Divergence": "Momentum slowing → potential reversal.",
+    "Volume Divergence": "Weak price movement → caution on trend continuation.",
+    "Rotate to Alts": "Strong rotation signal → move funds into altcoins.",
+    "Profit Mode": "Suggests scaling out of positions / taking profit.",
+    "Full Exit Watch": "Extreme signal → consider exiting major positions.",
+    "MVRV Z-Score": "BTC historically overvalued when MVRV Z > 7.",
+    "SOPR LTH": "Long-term holder SOPR > 1.5 → high profit taking.",
+    "Exchange Inflow": "Exchange inflows spike → whales moving BTC to exchanges.",
+    "Pi Cycle Top": "Pi Cycle Top indicator intersects price → major top possible.",
+    "Funding Rate": "Perpetual funding > 0.2% long → market over-leveraged."
+}
+
+st.markdown("### 📊 Key Market Signals (Hover for explanation)")
+signal_df = pd.DataFrame([
+    {"Signal": name, "Active": "🟢" if active else "🔴", "Explanation": signal_explanations.get(name,"")}
+    for name, active in sig.items()
+])
+
+# Plotly Table for interactive tooltips
+fig = go.Figure(data=[go.Table(
+    header=dict(values=["Signal", "Status"],
+                fill_color='paleturquoise', align='left'),
+    cells=dict(values=[signal_df["Signal"], signal_df["Active"]],
+               fill_color='lavender',
+               align='left',
+               hovertext=signal_df["Explanation"],
+               hoverinfo="text"))])
+fig.update_layout(height=300)
+st.plotly_chart(fig, use_container_width=True)
 
 # =========================
 # Profit Ladder Planner
@@ -233,15 +259,18 @@ if use_trailing and btc_price:
 # Altcoin Dashboard
 # =========================
 st.markdown("---")
-st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top 30)")
+st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top N)")
 
 alt_df = get_top_alts_safe(top_n_alts)
 if not alt_df.empty:
     alt_df = alt_df.sort_values(by='7d %', ascending=False).head(30)
-    # Robust rotation score: weighted by 7d % and 24h %, scaled 0-100
+    # Rotation score: combine 7d %, 24h %, scale 0-100
     min_val = alt_df[['7d %','24h %']].min().min()
     max_val = alt_df[['7d %','24h %']].max().max()
-    alt_df['Rotation Score (%)'] = alt_df.apply(lambda x: round(50*(x['7d %']-min_val)/(max_val-min_val)+50*(x['24h %']-min_val)/(max_val-min_val),2), axis=1)
+    alt_df['Rotation Score (%)'] = alt_df.apply(
+        lambda x: round(50*(x['7d %']-min_val)/(max_val-min_val)+50*(x['24h %']-min_val)/(max_val-min_val),2),
+        axis=1
+    )
     alt_df['Suggested Action'] = ['✅ Rotate In' if sig.get('Rotate to Alts') else '⚠️ Wait']*len(alt_df)
 
     chart_option = st.selectbox("Select Altcoin Chart", ["Rotation Score (%)", "7-Day % Price Change", "Market Cap vs 7-Day % Change Bubble"])
@@ -254,35 +283,6 @@ if not alt_df.empty:
     else:
         fig = px.scatter(alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %', hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60, title="Market Cap vs 7-Day % Change Bubble")
         fig.update_layout(xaxis_title="Market Cap ($B)", yaxis_title="7-Day % Change")
-
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.warning("No altcoin data available for top selection.")
-
-# =========================
-# Expanded Signals Detail
-# =========================
-st.markdown("---")
-st.subheader("🔍 Signals Detail")
-signal_descriptions = {
-    "Dom < First Break": "BTC losing market share → altcoins may start moving up.",
-    "Dom < Strong Confirm": "Confirms major rotation into altcoins → potential altseason.",
-    "ETH/BTC Breakout": "ETH outperforming BTC → bullish for ETH and altcoins.",
-    "F&G ≥ 80": "Extreme greed → market may be overbought.",
-    "RSI > 70": "BTC overbought → possible short-term correction.",
-    "MACD Divergence": "Momentum slowing → potential reversal.",
-    "Volume Divergence": "Weak price movement → caution on trend continuation.",
-    "Rotate to Alts": "Strong rotation signal → move funds into altcoins.",
-    "Profit Mode": "Suggests scaling out of positions / taking profit.",
-    "Full Exit Watch": "Extreme signal → consider exiting major positions.",
-    "MVRV Z-Score": "BTC historically overvalued when MVRV Z > 7.",
-    "SOPR LTH": "Long-term holder SOPR > 1.5 → high profit taking.",
-    "Exchange Inflow": "Exchange inflows spike → whales moving BTC to exchanges.",
-    "Pi Cycle Top": "Pi Cycle Top indicator intersects price → major top possible.",
-    "Funding Rate": "Perpetual funding > 0.2% long → market over-leveraged."
-}
-
-for name, desc in signal_descriptions.items():
-    active = sig.get(name, False)
-    status = "🟢" if active else "🔴"
-    st.markdown(f"{status} **{name}** - {desc}")
+    st.warning("No altcoin data available.")
