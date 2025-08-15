@@ -167,7 +167,32 @@ cols[1].metric("ETH/BTC", f"{ethbtc:.6f}" if ethbtc else "N/A")
 cols[2].metric("Fear & Greed", f"{fg_value} ({fg_label})" if fg_value else "N/A")
 cols[3].metric("BTC / ETH ($)", f"{btc_price:,.0f} / {eth_price:,.0f}" if btc_price and eth_price else "N/A")
 
+# =========================
+# Signal Panel (Green / Red Dots)
+# =========================
 st.markdown("---")
+st.header("📊 Key Market Signals")
+
+if sig:
+    signal_defs = {
+        "Dom < First Break": sig.get("dom_below_first"),
+        "Dom < Strong Confirm": sig.get("dom_below_second"),
+        "ETH/BTC Breakout": sig.get("ethbtc_break"),
+        "F&G ≥ 80": sig.get("greed_high"),
+        "RSI > 70": sig.get("RSI_overbought"),
+        "MACD Divergence": sig.get("MACD_div"),
+        "Volume Divergence": sig.get("Volume_div"),
+        "Rotate to Alts": sig.get("rotate_to_alts"),
+        "Profit Mode": sig.get("profit_mode"),
+        "Full Exit Watch": sig.get("full_exit_watch")
+    }
+
+    cols = st.columns(len(signal_defs))
+    for i, (name, active) in enumerate(signal_defs.items()):
+        emoji = "🟢" if active else "🔴"
+        cols[i].markdown(f"**{name}**\n\n{emoji}")
+else:
+    st.warning("Signals unavailable")
 
 # =========================
 # Tabs Layout
