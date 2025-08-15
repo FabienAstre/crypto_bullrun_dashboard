@@ -1,5 +1,15 @@
+# Core
 streamlit>=1.25.0
 pandas>=2.0.0
 numpy>=1.25.0
 requests>=2.31.0
 plotly>=5.18.0
+
+# Crypto Signals / Analytics
+pytrends>=4.10.0            # Google Trends integration
+scipy>=1.11.0               # For signal processing / Pi Cycle calculations
+ta-lib>=0.4.24              # Technical analysis indicators (RSI, MACD, etc.)
+matplotlib>=3.8.0           # Optional plotting if needed
+
+# Optional caching / speedup
+joblib>=1.3.2               # For caching computations
