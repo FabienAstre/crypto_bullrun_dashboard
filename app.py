@@ -176,7 +176,7 @@ sig = build_signals(btc_dom, ethbtc, fg_value, rsi, macd_div, vol_div)
 st.markdown("---")
 
 # =========================
-# Combined Signals Panel with Explanations
+# Combined Signals Panel with Explanations (Grid Layout)
 # =========================
 st.markdown("### 📊 Key Market Signals & Explanations")
 
@@ -198,10 +198,17 @@ signal_descriptions = {
     "Funding Rate": "Perpetual funding > 0.2% long → market over-leveraged."
 }
 
-for name, desc in signal_descriptions.items():
-    active = sig.get(name, False)
-    status_emoji = "🟢" if active else "🔴"
-    st.markdown(f"{status_emoji} **{name}** - {desc}")
+# Number of columns per row
+cols_per_row = 3
+signal_items = list(signal_descriptions.items())
+
+for i in range(0, len(signal_items), cols_per_row):
+    cols = st.columns(min(cols_per_row, len(signal_items)-i))
+    for j, (name, desc) in enumerate(signal_items[i:i+cols_per_row]):
+        active = sig.get(name, False)
+        status_emoji = "🟢" if active else "🔴"
+        cols[j].markdown(f"{status_emoji} **{name}**  \n{desc}")
+
 
 # =========================
 # Profit Ladder Planner
