@@ -11,13 +11,11 @@ st.title("🚀 Crypto Bull Run Signals Dashboard")
 # Helper functions
 # =========================
 def get_yf_latest(symbol, period="6mo", interval="1d"):
-    """Fetch Yahoo Finance data and return as DataFrame."""
     df = yf.download(symbol, period=period, interval=interval, progress=False)
     df.dropna(inplace=True)
     return df
 
 def get_coingecko_market_chart(coin_id, days="90", vs_currency="usd"):
-    """Fetch market chart data from CoinGecko."""
     try:
         url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
         params = {"vs_currency": vs_currency, "days": days, "interval": "daily"}
@@ -31,7 +29,6 @@ def get_coingecko_market_chart(coin_id, days="90", vs_currency="usd"):
         return pd.DataFrame(columns=["timestamp", "price"])
 
 def get_fear_and_greed():
-    """Get Fear & Greed Index from Alternative.me."""
     try:
         url = "https://api.alternative.me/fng/"
         r = requests.get(url, timeout=20)
@@ -41,12 +38,7 @@ def get_fear_and_greed():
     except:
         return None
 
-# =========================
-# Signal display function
-# =========================
 def add_signal(name, description, active):
-    """Display a signal row with status."""
-    # Ensure single Python bool
     status = "🟢" if bool(active) else "🔴"
     st.write(f"{status} **{name}** — {description}")
 
@@ -60,30 +52,28 @@ btc_df = get_yf_latest("BTC-USD", period="1y")
 btc_above_200dma = False
 if not btc_df.empty and len(btc_df) >= 200:
     btc_df["MA200"] = btc_df["Close"].rolling(window=200).mean()
-    ma200 = btc_df["MA200"].iloc[-1]
-    close = btc_df["Close"].iloc[-1]
-    if pd.notna(ma200) and pd.notna(close):
-        btc_above_200dma = bool(close > ma200)
+    ma200 = float(btc_df["MA200"].iloc[-1]) if pd.notna(btc_df["MA200"].iloc[-1]) else np.nan
+    close = float(btc_df["Close"].iloc[-1]) if pd.notna(btc_df["Close"].iloc[-1]) else np.nan
+    if not np.isnan(ma200) and not np.isnan(close):
+        btc_above_200dma = close > ma200
 add_signal("BTC > 200D MA", "Long-term bullish structure intact.", btc_above_200dma)
 
 # DXY downtrend
 dxy_df = get_yf_latest("DX-Y.NYB", period="6mo")
 dxy_trending_down = False
 if not dxy_df.empty:
-    first = dxy_df["Close"].iloc[0]
-    last = dxy_df["Close"].iloc[-1]
-    if pd.notna(first) and pd.notna(last):
-        dxy_trending_down = bool(last < first)
+    first = float(dxy_df["Close"].iloc[0])
+    last = float(dxy_df["Close"].iloc[-1])
+    dxy_trending_down = last < first
 add_signal("DXY Downtrend", "Weak USD → supports risk assets.", dxy_trending_down)
 
 # NASDAQ uptrend
 nasdaq_df = get_yf_latest("^IXIC", period="6mo")
 nasdaq_up = False
 if not nasdaq_df.empty:
-    first = nasdaq_df["Close"].iloc[0]
-    last = nasdaq_df["Close"].iloc[-1]
-    if pd.notna(first) and pd.notna(last):
-        nasdaq_up = bool(last > first)
+    first = float(nasdaq_df["Close"].iloc[0])
+    last = float(nasdaq_df["Close"].iloc[-1])
+    nasdaq_up = last > first
 add_signal("NASDAQ Uptrend", "Equities risk-on → crypto-friendly.", nasdaq_up)
 
 # =========================
@@ -95,12 +85,11 @@ st.subheader("🔄 Rotation Triggers")
 btc_market = get_coingecko_market_chart("bitcoin", days="90")
 total_market = get_coingecko_market_chart("bitcoin", days="90")  # Placeholder
 btc_dominance = 0
-if not btc_market.empty and not total_market.empty and total_market["price"].iloc[-1] != 0:
-    btc_price = btc_market["price"].iloc[-1]
-    total_price = total_market["price"].iloc[-1]
-    if pd.notna(btc_price) and pd.notna(total_price):
-        btc_dominance = float(btc_price / total_price * 100)
-
+if not btc_market.empty and not total_market.empty:
+    btc_price = float(btc_market["price"].iloc[-1])
+    total_price = float(total_market["price"].iloc[-1])
+    if total_price != 0:
+        btc_dominance = btc_price / total_price * 100
 btc_dom_first_break = btc_dominance < 50
 btc_dom_strong_confirm = btc_dominance < 45
 add_signal("BTC Dom < 1st Break", "BTC losing market share → alts may start moving.", btc_dom_first_break)
@@ -110,10 +99,9 @@ add_signal("BTC Dom < Strong Confirm", "Major alt rotation confirmed.", btc_dom_
 ethbtc_df = get_yf_latest("ETH-BTC", period="6mo")
 eth_btc_breakout = False
 if not ethbtc_df.empty:
-    last = ethbtc_df["Close"].iloc[-1]
-    max_val = ethbtc_df["Close"].max()
-    if pd.notna(last) and pd.notna(max_val):
-        eth_btc_breakout = bool(last > max_val * 0.98)
+    last = float(ethbtc_df["Close"].iloc[-1])
+    max_val = float(ethbtc_df["Close"].max())
+    eth_btc_breakout = last > max_val * 0.98
 add_signal("ETH/BTC Breakout", "ETH outperforming BTC → bullish for alts.", eth_btc_breakout)
 
 # =========================
@@ -136,9 +124,9 @@ if not btc_df.empty:
     roll_down = down.rolling(14).mean()
     rs = roll_up / roll_down
     rsi = 100 - (100 / (1 + rs))
-    last_rsi = rsi.iloc[-1] if not rsi.empty else np.nan
-    if pd.notna(last_rsi):
-        rsi_overbought = bool(last_rsi > 70)
+    last_rsi = float(rsi.iloc[-1]) if pd.notna(rsi.iloc[-1]) else np.nan
+    if not np.isnan(last_rsi):
+        rsi_overbought = last_rsi > 70
 add_signal("BTC RSI > 70", "BTC potentially overbought.", rsi_overbought)
 
 # BTC Funding Rate High (Binance)
@@ -148,7 +136,7 @@ try:
     params = {"symbol": "BTCUSDT", "limit": 1}
     r = requests.get(url, params=params, timeout=20)
     rate = float(r.json()[0]["fundingRate"])
-    funding_high = bool(rate > 0.01)
+    funding_high = rate > 0.01
 except:
     funding_high = False
 add_signal("BTC Funding Rate High", "Excessive long leverage in futures.", funding_high)
