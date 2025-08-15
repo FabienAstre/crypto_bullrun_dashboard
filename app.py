@@ -40,13 +40,13 @@ st.sidebar.caption("This dashboard pulls live data at runtime (CoinGecko & Alter
 # =========================
 # Data Fetchers
 # =========================
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def get_global():
     r = requests.get("https://api.coingecko.com/api/v3/global", timeout=20)
     r.raise_for_status()
     return r.json()
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def get_ethbtc():
     r = requests.get(
         "https://api.coingecko.com/api/v3/simple/price",
@@ -56,7 +56,7 @@ def get_ethbtc():
     r.raise_for_status()
     return float(r.json()["ethereum"]["btc"])
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def get_prices_usd(ids):
     r = requests.get(
         "https://api.coingecko.com/api/v3/simple/price",
@@ -76,7 +76,7 @@ def get_fear_greed():
     except Exception:
         return None, None
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def get_top_alts(n=50):
     r = requests.get(
         "https://api.coingecko.com/api/v3/coins/markets",
@@ -105,7 +105,6 @@ def get_top_alts(n=50):
 
 @st.cache_data(ttl=120)
 def get_rsi_macd_volume():
-    # Placeholder: in a real version fetch BTC price history and compute RSI/MACD/Volume divergence
     return 72, 0.002, False  # RSI, MACD hist divergence, volume divergence
 
 # =========================
@@ -124,7 +123,6 @@ def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
     sig["rotate_to_alts"] = sig["dom_below_first"] and sig["ethbtc_break"]
     sig["profit_mode"] = sig["dom_below_second"] or sig["greed_high"] or sig["RSI_overbought"] or sig["MACD_div"] or sig["Volume_div"]
     sig["full_exit_watch"] = sig["dom_below_second"] and sig["greed_high"]
-    # Historical bull-run placeholders
     sig["MVRV_Z"] = True
     sig["SOPR_LTH"] = True
     sig["Exchange_Inflow"] = False
@@ -141,7 +139,6 @@ btc_dom = None
 ethbtc = None
 fg_value, fg_label = get_fear_greed()
 rsi, macd_div, vol_div = get_rsi_macd_volume()
-sig = {}
 
 try:
     g = get_global()
@@ -204,15 +201,11 @@ signal_desc = {
     "Pi_Cycle_Top": "Pi Cycle Top indicator intersects price → major top possible",
     "Funding_Rate": "Perpetual funding >0.2% long → market over-leveraged"
 }
-
-if sig:
-    cols = st.columns(len(signal_names))
-    for i, s in enumerate(signal_names):
-        status = sig.get(s, False)
-        cols[i].markdown(f"**{s}**: {'🟢' if status else '🔴'}")
-        cols[i].caption(signal_desc[s])
-else:
-    st.warning("Bull-run signals unavailable due to missing data.")
+cols = st.columns(len(signal_names))
+for i, s in enumerate(signal_names):
+    status = sig[s]
+    cols[i].markdown(f"**{s}**: {'🟢' if status else '🔴'}")
+    cols[i].caption(signal_desc[s])
 
 # =========================
 # Profit Ladder Planner
@@ -255,15 +248,17 @@ if use_trailing and btc_price:
         st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
-# Altcoin Tables & Dashboard
+# Altcoin Tables
 # =========================
-st.header("🔥 Altcoin Momentum & Rotation Dashboard")
-
+st.header("🔥 Altcoin Watch & Rotation Tables")
 alt_df = get_top_alts(top_n_alts)
-alt_df['Suggested Action'] = ['✅ Rotate In' if sig.get('rotate_to_alts') and x>0 else '⚠️ Wait' for x in alt_df['7d %']]
+alt_df['Suggested Action'] = ['✅ Rotate In' if sig['rotate_to_alts'] and x>0 else '⚠️ Wait' for x in alt_df['7d %']]
+st.dataframe(alt_df, use_container_width=True)
 
-if sig.get('rotate_to_alts'):
-    st.success("🌊 **Altseason Mode Active!** BTC dominance breaking down, ETH/BTC breaking out.")
+# =========================
+# Altcoin Momentum & Rotation Dashboard (Bigger Board)
+# =========================
+st.header("📊 Altcoin Momentum & Rotation Dashboard")
 
 if not alt_df.empty:
     # Compute rotation score
@@ -272,44 +267,63 @@ if not alt_df.empty:
     alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(
         lambda x: round(100*(x-min_7d)/(max_7d-min_7d),2) if max_7d!=min_7d else 0
     )
-
-    # Layout: Chart 1 | Chart 2 | Table
-    col_chart1, col_chart2, col_table = st.columns([1.2, 1.2, 1])
-
-    # Chart 1 - Rotation Score
-    fig_score = px.bar(
-        alt_df, x='Coin', y='Rotation Score (%)',
-        color='Rotation Score (%)', color_continuous_scale='RdYlGn',
-        title="Rotation Score (%) by Altcoin"
+    
+    # Layout: chart full width, top rotation table below
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=alt_df['Coin'],
+        y=alt_df['Rotation Score (%)'],
+        name='Rotation Score (%)',
+        marker_color='indianred',
+        hovertext=alt_df['Suggested Action']
+    ))
+    fig.add_trace(go.Scatter(
+        x=alt_df['Coin'],
+        y=alt_df['7d %'],
+        name='7d % Change',
+        yaxis='y2',
+        mode='lines+markers',
+        marker_color='royalblue'
+    ))
+    fig.update_layout(
+        title="Top Altcoins Momentum & Rotation Probability",
+        xaxis_title="Altcoin",
+        yaxis=dict(title="Rotation Score (%)"),
+        yaxis2=dict(title="7d % Change", overlaying='y', side='right'),
+        legend=dict(y=1.1, orientation="h"),
+        hovermode='x unified',
+        height=500
     )
-    col_chart1.plotly_chart(fig_score, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Top rotation candidates
+    top_candidates = alt_df[(alt_df['Rotation Score (%)']>=75) & (sig['rotate_to_alts'])]
+    if not top_candidates.empty:
+        st.success("⚡ High-probability altcoins for rotation detected!")
+        st.dataframe(top_candidates[['Coin','Name','Price ($)','7d %','Rotation Score (%)','Suggested Action']], use_container_width=True)
+    elif sig['rotate_to_alts']:
+        st.info("Alt season signal ON, but no extreme high-probability alts this week.")
 
-    # Chart 2 - 7d % Change
-    fig_change = px.scatter(
-        alt_df, x='Coin', y='7d %', size='Mkt Cap ($B)',
-        color='7d %', color_continuous_scale='RdYlGn',
-        title="7-Day % Performance vs Market Cap"
-    )
-    col_chart2.plotly_chart(fig_change, use_container_width=True)
+# =========================
+# Altcoin Historical Price Viewer (Cached + Button)
+# =========================
+st.markdown("---")
+st.subheader("📈 View Altcoin History")
 
-    # Table - Top Candidates
-    top_candidates = alt_df[(alt_df['Rotation Score (%)'] >= 75)]
-    top_candidates_display = top_candidates[['Coin','Name','Price ($)','7d %','Rotation Score (%)','Suggested Action']]
-    col_table.subheader("⚡ Top Rotation Picks")
-    col_table.dataframe(top_candidates_display, use_container_width=True)
+alt_choice = st.selectbox("Select an Altcoin", alt_df['Coin'].tolist())
+days_choice = st.radio("History Range", [30, 90], horizontal=True)
 
-    # Historical view for selected coin
-    st.markdown("---")
-    alt_choice = st.selectbox("📈 View Altcoin History", alt_df['Coin'].tolist())
-    days_choice = st.radio("History Range", [30, 90], horizontal=True)
-
-    try:
-        r = requests.get(
-            f"https://api.coingecko.com/api/v3/coins/{alt_choice.lower()}/market_chart",
-            params={"vs_currency":"usd","days":days_choice,"interval":"daily"}, timeout=20
-        )
+if st.button(f"Load {alt_choice} Historical Data"):
+    
+    @st.cache_data(ttl=3600)
+    def get_alt_history(coin_id, days=30):
+        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+        r = requests.get(url, params={"vs_currency":"usd","days":days,"interval":"daily"}, timeout=20)
         r.raise_for_status()
-        hist_data = pd.DataFrame(r.json()["prices"], columns=["timestamp","price"])
+        return pd.DataFrame(r.json()["prices"], columns=["timestamp","price"])
+    
+    try:
+        hist_data = get_alt_history(alt_choice.lower(), days_choice)
         hist_data["date"] = pd.to_datetime(hist_data["timestamp"], unit='ms')
         fig_hist = px.line(
             hist_data, x="date", y="price",
@@ -319,29 +333,3 @@ if not alt_df.empty:
         st.plotly_chart(fig_hist, use_container_width=True)
     except Exception as e:
         st.warning(f"Failed to fetch historical data for {alt_choice}: {e}")
-else:
-    st.warning("No altcoin data available for chart.")
-
-# =========================
-# Signal Confluence Summary & Details
-# =========================
-st.header("🔔 Signal Confluence Summary")
-if sig:
-    active_signals = sum([sig.get(s,0) for s in signal_names + ["RSI_overbought","MACD_div","Volume_div","greed_high"]])
-    st.write(f"Number of active top-risk / exit signals: {active_signals} / {len(signal_names)+4}")
-    if active_signals >= 4:
-        st.warning("High confluence! Strongly consider scaling out of positions and/or rotating to altcoins.")
-    elif active_signals >= 2:
-        st.info("Moderate confluence. Partial profit-taking or watch closely.")
-    else:
-        st.success("Low confluence. Market still bullish, hold positions.")
-
-    # Detailed active/inactive signals
-    st.subheader("🔍 Active Signals Detail")
-    all_signals = signal_names + ["RSI_overbought","MACD_div","Volume_div","greed_high"]
-    active_signal_list = [s for s in all_signals if sig.get(s)]
-    inactive_signal_list = [s for s in all_signals if not sig.get(s)]
-    st.write(f"**Active Signals ({len(active_signal_list)})**: {', '.join(active_signal_list) if active_signal_list else 'None'}")
-    st.write(f"**Inactive Signals ({len(inactive_signal_list)})**: {', '.join(inactive_signal_list) if inactive_signal_list else 'None'}")
-else:
-    st.warning("Signal summary unavailable due to missing BTC.D or ETH/BTC data.")
