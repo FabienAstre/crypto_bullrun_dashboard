@@ -7,6 +7,7 @@ import datetime
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import yfinance as yf 
 
 st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", layout="wide")
 
