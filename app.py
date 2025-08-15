@@ -400,37 +400,30 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-# =========================
-# 🌈 BTC Rainbow Chart
-# =========================
+
 st.header("🌈 BTC Rainbow Chart")
 
-# Fetch BTC historical prices from CoinDesk
+# =========================
+# Fetch BTC historical data via Yahoo Finance
+# =========================
 @st.cache_data(ttl=3600)
-def get_btc_history():
-    import requests
-    import pandas as pd
-
+def get_btc_history_yf():
     try:
-        url = "https://api.coindesk.com/v1/bpi/historical/close.json"
-        params = {"start": "2010-07-17", "end": pd.Timestamp.today().strftime("%Y-%m-%d")}
-        response = requests.get(url, params=params, timeout=20)
-        response.raise_for_status()
-        data = response.json()
-        df = pd.DataFrame(list(data["bpi"].items()), columns=["date", "price"])
-        df["date"] = pd.to_datetime(df["date"])
+        df = yf.download("BTC-USD", start="2010-07-17")
+        df.reset_index(inplace=True)
+        df = df[["Date", "Close"]].rename(columns={"Date": "date", "Close": "price"})
         return df
-    except requests.HTTPError as e:
-        st.error(f"HTTP error fetching BTC history: {e}")
-        return pd.DataFrame()
     except Exception as e:
         st.error(f"Error fetching BTC data: {e}")
         return pd.DataFrame()
 
-btc_data = get_btc_history()
+btc_data = get_btc_history_yf()
 
+# =========================
+# Plot Rainbow Chart
+# =========================
 if not btc_data.empty:
-    # Define rainbow bands
+    # Rainbow bands (log scale)
     colors = [
         "#ff0000", "#ff4500", "#ff8c00", "#ffd700", "#7fff00",
         "#00ff00", "#00fa9a", "#00ced1", "#1e90ff", "#9400d3"
@@ -441,10 +434,8 @@ if not btc_data.empty:
         "Deep Bargain", "Buy Zone"
     ]
 
-    min_price = btc_data["price"].min()
-    max_price = btc_data["price"].max()
-    log_min = np.log(min_price)
-    log_max = np.log(max_price)
+    log_min = np.log(btc_data["price"].min())
+    log_max = np.log(btc_data["price"].max())
     log_range = log_max - log_min
 
     bands = pd.DataFrame({
@@ -454,7 +445,7 @@ if not btc_data.empty:
         "label": labels
     })
 
-    # Plot BTC price with rainbow bands
+    # Plot BTC price
     fig = px.line(btc_data, x="date", y="price", title="Bitcoin Rainbow Chart")
     for _, row in bands.iterrows():
         fig.add_shape(
