@@ -296,16 +296,18 @@ else:
 # =========================
 st.markdown("---")
 st.header("🌈 BTC Rainbow Chart")
-btc_hist = get_btc_history(3650)
+btc_hist = get_btc_history()
 if not btc_hist.empty:
-    df = btc_hist.copy()
-    df['log_price'] = np.log(df['price'])
-    bands = [6,5,4,3,2,1,0.5,0.25,0.1]  # log multiples for rainbow bands
     fig = go.Figure()
-    for i, b in enumerate(bands):
-        fig.add_trace(go.Scatter(x=df.index, y=df['price']*b, fill='tonexty' if i>0 else None, mode='none', name=f'Band {i+1}', opacity=0.2))
-    fig.add_trace(go.Scatter(x=df.index, y=df['price'], mode='lines', name='BTC Price', line=dict(color='black', width=2)))
-    fig.update_layout(yaxis_type="log", yaxis_title="BTC Price ($)", xaxis_title="Date")
+    # Rainbow layers
+    colors = ["#ff0000","#ff6600","#ffcc00","#ffff00","#66ff66","#00ccff","#6666ff","#cc66ff","#ff66cc","#ff9999"]
+    for i, c in enumerate(colors):
+        fig.add_trace(go.Scatter(
+            x=btc_hist.index, y=btc_hist["price"]*(1-0.1+i*0.01),
+            fill='tonexty' if i>0 else 'none', fillcolor=c, line=dict(color=c), name=f"Layer {i+1}", opacity=0.4
+        ))
+    fig.add_trace(go.Scatter(x=btc_hist.index, y=btc_hist["price"], mode='lines', line=dict(color='black', width=2), name='BTC Price'))
+    fig.update_layout(title="BTC Rainbow Chart", xaxis_title="Date", yaxis_title="Price ($)", showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.warning("BTC historical data not available.")
+    st.warning("BTC historical data not available for Rainbow Chart.")
