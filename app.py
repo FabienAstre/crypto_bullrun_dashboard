@@ -402,41 +402,36 @@ import streamlit as st
 
 st.header("🌈 BTC Rainbow Chart")
 
-# Fetch BTC historical prices from CoinGecko
+# =========================
+# Fetch BTC historical prices safely
+# =========================
 @st.cache_data(ttl=3600)
-def get_btc_history(days=3650):  # ~10 years
+def get_btc_history_safe(days=3650):  # ~10 years
     url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
     params = {"vs_currency": "usd", "days": days, "interval": "daily"}
-    r = requests.get(url, params=params, timeout=20)
-    r.raise_for_status()
-    data = pd.DataFrame(r.json()["prices"], columns=["timestamp", "price"])
-    data["date"] = pd.to_datetime(data["timestamp"], unit='ms')
-    return data
+    try:
+        r = requests.get(url, params=params, timeout=20)
+        r.raise_for_status()
+        data = pd.DataFrame(r.json().get("prices", []), columns=["timestamp", "price"])
+        if data.empty:
+            st.warning("BTC historical prices returned empty from API.")
+            return pd.DataFrame(columns=["timestamp","price","date"])
+        data["date"] = pd.to_datetime(data["timestamp"], unit='ms')
+        return data
+    except requests.exceptions.HTTPError as e:
+        st.warning(f"HTTP error fetching BTC history: {e}")
+    except requests.exceptions.RequestException as e:
+        st.warning(f"Network/API error fetching BTC history: {e}")
+    return pd.DataFrame(columns=["timestamp","price","date"])  # fallback empty
 
-btc_data = get_btc_history()
+# Fetch data
+btc_data = get_btc_history_safe()
 
-# Define rainbow bands (logarithmic)
-colors = [
-    "#ff0000", "#ff4500", "#ff8c00", "#ffd700", "#7fff00",
-    "#00ff00", "#00fa9a", "#00ced1", "#1e90ff", "#9400d3"
-]
-labels = [
-    "Maximum Bubble", "Sell Zone", "High Risk", "Overvalued", 
-    "Fairly Priced", "Neutral", "Accumulation Zone", "Bargain", 
-    "Deep Bargain", "Buy Zone"
-]
-
-min_price = btc_data["price"].min()
-max_price = btc_data["price"].max()
-log_min = np.log(min_price)
-log_max = np.log(max_price)
-log_range = log_max - log_min
-
-st.header("🌈 BTC Rainbow Chart")
-
-# Only plot if data exists
+# =========================
+# Plot Rainbow Chart
+# =========================
 if not btc_data.empty:
-    # Define rainbow bands (logarithmic)
+    # Rainbow bands
     colors = [
         "#ff0000", "#ff4500", "#ff8c00", "#ffd700", "#7fff00",
         "#00ff00", "#00fa9a", "#00ced1", "#1e90ff", "#9400d3"
@@ -453,7 +448,6 @@ if not btc_data.empty:
     log_max = np.log(max_price)
     log_range = log_max - log_min
 
-    # Rainbow band dataframe
     bands = pd.DataFrame({
         "y0": np.exp(log_min + np.array(range(len(colors))) / len(colors) * log_range),
         "y1": np.exp(log_min + (np.array(range(1, len(colors)+1)) / len(colors)) * log_range),
@@ -461,7 +455,6 @@ if not btc_data.empty:
         "label": labels
     })
 
-    # Plot BTC price
     fig = px.line(btc_data, x="date", y="price", title="Bitcoin Rainbow Chart")
     for _, row in bands.iterrows():
         fig.add_shape(
