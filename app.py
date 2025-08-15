@@ -426,12 +426,37 @@ def get_btc_history_safe(days=3650):  # ~10 years
 
 # Fetch data
 btc_data = get_btc_history_safe()
+# =========================
+# 🌈 BTC Rainbow Chart
+# =========================
+st.header("🌈 BTC Rainbow Chart")
 
-# =========================
-# Plot Rainbow Chart
-# =========================
+# Fetch BTC historical prices from CoinDesk
+@st.cache_data(ttl=3600)
+def get_btc_history():
+    import requests
+    import pandas as pd
+
+    try:
+        url = "https://api.coindesk.com/v1/bpi/historical/close.json"
+        params = {"start": "2010-07-17", "end": pd.Timestamp.today().strftime("%Y-%m-%d")}
+        response = requests.get(url, params=params, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+        df = pd.DataFrame(list(data["bpi"].items()), columns=["date", "price"])
+        df["date"] = pd.to_datetime(df["date"])
+        return df
+    except requests.HTTPError as e:
+        st.error(f"HTTP error fetching BTC history: {e}")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error fetching BTC data: {e}")
+        return pd.DataFrame()
+
+btc_data = get_btc_history()
+
 if not btc_data.empty:
-    # Rainbow bands
+    # Define rainbow bands
     colors = [
         "#ff0000", "#ff4500", "#ff8c00", "#ffd700", "#7fff00",
         "#00ff00", "#00fa9a", "#00ced1", "#1e90ff", "#9400d3"
@@ -455,6 +480,7 @@ if not btc_data.empty:
         "label": labels
     })
 
+    # Plot BTC price with rainbow bands
     fig = px.line(btc_data, x="date", y="price", title="Bitcoin Rainbow Chart")
     for _, row in bands.iterrows():
         fig.add_shape(
@@ -473,4 +499,3 @@ if not btc_data.empty:
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.warning("BTC historical data unavailable. Rainbow chart cannot be displayed.")
-
