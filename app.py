@@ -22,17 +22,17 @@ dom_first = st.sidebar.number_input("BTC Dominance: 1st break (%)", 0.0, 100.0, 
 dom_second = st.sidebar.number_input("BTC Dominance: strong confirm (%)", 0.0, 100.0, 54.66, 0.01)
 ethbtc_break = st.sidebar.number_input("ETH/BTC breakout level", 0.0, 1.0, 0.054, 0.001)
 
-entry_btc = st.sidebar.number_input("Your BTC average entry ($)", 0.0, 1_000_000, 40000.0, 100.0)
-entry_eth = st.sidebar.number_input("Your ETH average entry ($)", 0.0, 1_000_000, 2000.0, 10.0)
-ladder_step_pct = st.sidebar.slider("Take profit every X% gain", 1, 50, 10)
-sell_pct_per_step = st.sidebar.slider("Sell Y% each step", 1, 50, 10)
+entry_btc = st.sidebar.number_input("Your BTC average entry ($)", 0.0, 1_000_000.0, 40000.0, 100.0)
+entry_eth = st.sidebar.number_input("Your ETH average entry ($)", 0.0, 1_000_000.0, 2000.0, 10.0)
+ladder_step_pct = st.sidebar.slider("Take profit every X% gain", 1.0, 50.0, 10.0)
+sell_pct_per_step = st.sidebar.slider("Sell Y% each step", 1.0, 50.0, 10.0)
 max_ladder_steps = st.sidebar.slider("Max ladder steps", 1, 30, 8)
 
 use_trailing = st.sidebar.checkbox("Enable trailing stop", value=True)
-trail_pct = st.sidebar.slider("Trailing stop (%)", 5, 50, 20)
+trail_pct = st.sidebar.slider("Trailing stop (%)", 5.0, 50.0, 20.0)
 
-target_alt_alloc = st.sidebar.slider("Target Alt allocation when signals fire (%)", 0, 100, 40)
-top_n_alts = st.sidebar.slider("Top N alts to scan (by market cap)", 10, 100, 50, 10)
+target_alt_alloc = st.sidebar.slider("Target Alt allocation when signals fire (%)", 0.0, 100.0, 40.0)
+top_n_alts = st.sidebar.slider("Top N alts to scan (by market cap)", 10, 100, 50)
 
 # --------------------------
 # Data Fetchers
@@ -94,7 +94,12 @@ col3.metric("ETH/BTC", f"{ethbtc:.6f}" if ethbtc else "N/A")
 st.header("🌈 Bitcoin Historical Chart")
 try:
     url = "https://api.coindesk.com/v2/prices/BTC-USD/historical"
-    r = requests.get(url, headers=HEADERS, params={"start_date":"2010-07-17","end_date":datetime.today().strftime("%Y-%m-%d")}, timeout=20)
+    r = requests.get(
+        url,
+        headers=HEADERS,
+        params={"start_date":"2010-07-17","end_date":datetime.today().strftime("%Y-%m-%d")},
+        timeout=20
+    )
     r.raise_for_status()
     hist = pd.DataFrame(r.json()["data"])
     hist["date"] = pd.to_datetime(hist["time"])
