@@ -277,7 +277,7 @@ if use_trailing and btc_price:
         st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
-# Altcoin Dashboard Top 30 (Single Graph with Dropdown)
+# Altcoin Dashboard Top 30 (Single Graph with Dropdown + Bubble)
 # =========================
 st.markdown("---")
 st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top 30)")
@@ -288,18 +288,28 @@ if not alt_df.empty:
     min_7d = alt_df['7d %'].min()
     max_7d = alt_df['7d %'].max()
     alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(lambda x: round(100*(x-min_7d)/(max_7d-min_7d),2) if pd.notnull(x) else 0)
-    alt_df['7d MA'] = alt_df['Price ($)'].rolling(7, min_periods=1).mean()
     alt_df['Suggested Action'] = ['✅ Rotate In' if sig.get('rotate_to_alts') else '⚠️ Wait']*len(alt_df)
 
     # Dropdown for chart selection
-    chart_option = st.selectbox("Select Altcoin Chart", ["Rotation Score (%)", "7-Day Moving Average", "7-Day % Price Change"])
+    chart_option = st.selectbox("Select Altcoin Chart", ["Rotation Score (%)", "7-Day % Price Change", "Market Cap vs 7-Day % Change Bubble"])
 
     if chart_option == "Rotation Score (%)":
-        fig = px.bar(alt_df, x='Coin', y='Rotation Score (%)', color='Rotation Score (%)', color_continuous_scale='RdYlGn', title="Rotation Score (%) by Altcoin")
-    elif chart_option == "7-Day Moving Average":
-        fig = px.line(alt_df, x='Coin', y='7d MA', title="7-Day Moving Average Price", markers=True)
-    else:
-        fig = px.bar(alt_df, x='Coin', y='7d %', color='7d %', color_continuous_scale='RdYlGn', text='7d %', title="7-Day % Price Change")
+        fig = px.bar(
+            alt_df, x='Coin', y='Rotation Score (%)', color='Rotation Score (%)',
+            color_continuous_scale='RdYlGn', title="Rotation Score (%) by Altcoin"
+        )
+    elif chart_option == "7-Day % Price Change":
+        fig = px.bar(
+            alt_df, x='Coin', y='7d %', color='7d %',
+            color_continuous_scale='RdYlGn', text='7d %', title="7-Day % Price Change"
+        )
+    else:  # Bubble chart
+        fig = px.scatter(
+            alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %',
+            hover_name='Coin', color_continuous_scale='RdYlGn_r',
+            size_max=60, title="Market Cap vs 7-Day % Change Bubble"
+        )
+        fig.update_layout(xaxis_title="Market Cap ($B)", yaxis_title="7-Day % Change")
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -310,6 +320,7 @@ if not alt_df.empty:
     )
 else:
     st.warning("No altcoin data available for top 30.")
+
 
 
 # =========================
