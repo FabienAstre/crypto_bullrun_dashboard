@@ -252,7 +252,7 @@ if use_trailing and btc_price:
         st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
-# Altcoin Dashboard
+# Altcoin Momentum & Rotation Dashboard (Redesigned)
 # =========================
 st.markdown("---")
 st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top 30)")
@@ -260,22 +260,52 @@ st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top 30)")
 alt_df = get_top_alts_safe(top_n_alts)
 if not alt_df.empty:
     alt_df = alt_df.sort_values(by='7d %', ascending=False).head(30)
+
+    # Compute Rotation Score
     min_val = alt_df[['7d %','24h %']].min().min()
     max_val = alt_df[['7d %','24h %']].max().max()
-    alt_df['Rotation Score (%)'] = alt_df.apply(lambda x: round(50*(x['7d %']-min_val)/(max_val-min_val)+50*(x['24h %']-min_val)/(max_val-min_val),2), axis=1)
-    alt_df['Suggested Action'] = ['✅ Rotate In' if sig.get('Rotate to Alts') else '⚠️ Wait']*len(alt_df)
+    alt_df['Rotation Score (%)'] = alt_df.apply(
+        lambda x: round(
+            50*(x['7d %']-min_val)/(max_val-min_val) + 
+            50*(x['24h %']-min_val)/(max_val-min_val),2
+        ), axis=1
+    )
+    # Suggested Action
+    alt_df['Suggested Action'] = alt_df['Rotation Score (%)'].apply(
+        lambda x: "✅ Rotate In" if sig.get('Rotate to Alts') and x>60 else "⚠️ Wait"
+    )
 
-    chart_option = st.selectbox("Select Altcoin Chart", ["Rotation Score (%)", "7-Day % Price Change", "Market Cap vs 7-Day % Change Bubble"])
+    # --- Summary Metrics ---
+    col1, col2, col3 = st.columns(3)
+    top3_coins = ", ".join(alt_df['Coin'].head(3).tolist())
+    col1.metric("Top 3 Alts (Rotation Score)", top3_coins)
+    avg_7d = round(alt_df['7d %'].mean(),2)
+    col2.metric("Avg 7-Day % Change", f"{avg_7d}%")
+    positive_count = (alt_df['Rotation Score (%)']>50).sum()
+    col3.metric("Alts in Positive Momentum", f"{positive_count}/{len(alt_df)}")
 
-    if chart_option == "Rotation Score (%)":
-        fig = px.bar(alt_df, x='Coin', y='Rotation Score (%)', color='Rotation Score (%)',
-                     color_continuous_scale='RdYlGn', title="Rotation Score (%) by Altcoin")
-    elif chart_option == "7-Day % Price Change":
-        fig = px.bar(alt_df, x='Coin', y='7d %', color='7d %', color_continuous_scale='RdYlGn', text='7d %', title="7-Day % Price Change")
-    else:
-        fig = px.scatter(alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %', hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60, title="Market Cap vs 7-Day % Change Bubble")
-        fig.update_layout(xaxis_title="Market Cap ($B)", yaxis_title="7-Day % Change")
+    # --- Heatmap Table ---
+    st.subheader("Rotation Score Heatmap")
+    heatmap_df = alt_df[['Coin','24h %','7d %','Rotation Score (%)','Suggested Action']]
+    # Apply color based on values
+    def color_cells(val, col_name):
+        if col_name in ['24h %','7d %','Rotation Score (%)']:
+            color = 'green' if val>0 else 'red'
+            intensity = min(abs(val)/100,1)  # normalize
+            return f'background-color: {color}; opacity: {intensity}'
+        return ''
+    st.dataframe(heatmap_df.style.applymap(lambda v: 'color: white;' if isinstance(v,str) else '', subset=['Suggested Action']), use_container_width=True)
 
+    # --- Market Cap vs Momentum Bubble Chart ---
+    st.subheader("Market Cap vs Rotation Score Bubble Chart")
+    fig = px.scatter(
+        alt_df, x='Mkt Cap ($B)', y='7d %', 
+        size='Mkt Cap ($B)', color='Rotation Score (%)', 
+        hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60,
+        title="Market Cap vs 7-Day % Change with Rotation Score"
+    )
+    fig.update_layout(xaxis_title="Market Cap ($B)", yaxis_title="7-Day % Change")
     st.plotly_chart(fig, use_container_width=True)
+
 else:
     st.warning("No altcoin data available for top selection.")
