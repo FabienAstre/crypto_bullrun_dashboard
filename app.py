@@ -290,24 +290,38 @@ if not alt_df.empty:
 
 else:
     st.warning("No altcoin data available for top selection.")
+# =========================
+# Bitcoin Power Law Chart Explanation
+# =========================
+st.markdown("## 📘 Bitcoin Power Law Chart")
 
-# =========================
-# BTC Rainbow Chart
-# =========================
-st.markdown("---")
-st.header("🌈 BTC Rainbow Chart")
-btc_hist = get_btc_history()
-if not btc_hist.empty:
-    fig = go.Figure()
-    # Rainbow layers
-    colors = ["#ff0000","#ff6600","#ffcc00","#ffff00","#66ff66","#00ccff","#6666ff","#cc66ff","#ff66cc","#ff9999"]
-    for i, c in enumerate(colors):
-        fig.add_trace(go.Scatter(
-            x=btc_hist.index, y=btc_hist["price"]*(1-0.1+i*0.01),
-            fill='tonexty' if i>0 else 'none', fillcolor=c, line=dict(color=c), name=f"Layer {i+1}", opacity=0.4
-        ))
-    fig.add_trace(go.Scatter(x=btc_hist.index, y=btc_hist["price"], mode='lines', line=dict(color='black', width=2), name='BTC Price'))
-    fig.update_layout(title="BTC Rainbow Chart", xaxis_title="Date", yaxis_title="Price ($)", showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.warning("BTC historical data not available for Rainbow Chart.")
+st.markdown("""
+### What Is the Bitcoin Power Law Chart?
+The Bitcoin Power Law Chart is a long-term price model that suggests Bitcoin’s price follows a **power law function** over time.  
+Unlike traditional stock market models that assume linear or exponential growth, the power law model suggests that Bitcoin’s price scales in a predictable, non-random way over the long run.
+
+This model indicates that Bitcoin’s price movements are **not purely speculative or random**, but instead follow a structured mathematical pattern based on time.
+""")
+
+st.markdown("""
+### 🔬 How Is the Bitcoin Power Law Chart Calculated?
+- **Logarithmic Scale:** Price history is plotted on a log-log scale (time and price both in logs).  
+- **Power Law Regression:** A power function of the form *P(t) = a·t^b* is applied.  
+  - *P(t)* = Bitcoin’s price at time *t*  
+  - *a, b* = constants from historical data  
+  - *t* = time since inception  
+- **Price Bands:** Upper/lower bounds form a valuation corridor, showing when BTC is overbought/oversold vs. trend.
+""")
+
+st.markdown("""
+### ⚠️ Risks & Shortcomings
+- 📉 **Assumes Ongoing Growth:** Future adoption may slow or change.  
+- 🌍 **No Market Events:** Ignores regulations, macroeconomic shocks, or black swans.  
+- ⏳ **Based on Past Data:** May fail if Bitcoin’s growth path changes.  
+- 🚫 **Not Guaranteed:** Price can fall outside the predicted range.  
+- ⛏️ **No Supply Dynamics:** Unlike Stock-to-Flow, ignores halving/mining effects.  
+- ❗ **False Confidence Risk:** Shouldn’t be used as the only valuation model.
+""")
+
+st.info("👉 Use the Bitcoin Power Law Chart as a **long-term valuation lens**, not as a strict prediction tool. Always combine it with on-chain and market data.")
+
