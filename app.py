@@ -15,21 +15,21 @@ st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", lay
 # =========================
 st.sidebar.header("Dashboard Parameters")
 
-# Dominance & ETH/BTC triggers
+# --- Dominance & ETH/BTC ---
 st.sidebar.subheader("Dominance & ETH/BTC Triggers")
-dom_first = st.sidebar.number_input("BTC Dominance: 1st break (%)", 0.0, 100.0, 58.29, 0.01)
-dom_second = st.sidebar.number_input("BTC Dominance: strong confirm (%)", 0.0, 100.0, 54.66, 0.01)
-ethbtc_break = st.sidebar.number_input("ETH/BTC breakout level", 0.0, 1.0, 0.054, 0.001)
+dom_first = st.sidebar.number_input("BTC Dominance: 1st break (%)", 0.0, 100.0, 58.29, 0.01, format="%.2f")
+dom_second = st.sidebar.number_input("BTC Dominance: strong confirm (%)", 0.0, 100.0, 54.66, 0.01, format="%.2f")
+ethbtc_break = st.sidebar.number_input("ETH/BTC breakout level", 0.0, 1.0, 0.054, 0.001, format="%.3f")
 
-# Profit ladder
+# --- Profit Ladder ---
 st.sidebar.subheader("Profit-Taking Plan")
-entry_btc = st.sidebar.number_input("Your BTC average entry ($)", 0.0, 1_000_000.0, 40000.0, 100.0)
-entry_eth = st.sidebar.number_input("Your ETH average entry ($)", 0.0, 1_000_000.0, 2000.0, 10.0)
+entry_btc = st.sidebar.number_input("Your BTC average entry ($)", 0.0, 1000000.0, 40000.0, 100.0)
+entry_eth = st.sidebar.number_input("Your ETH average entry ($)", 0.0, 1000000.0, 2000.0, 10.0)
 ladder_step_pct = st.sidebar.slider("Take profit every X% gain", 1, 50, 10)
 sell_pct_per_step = st.sidebar.slider("Sell Y% each step", 1, 50, 10)
 max_ladder_steps = st.sidebar.slider("Max ladder steps", 1, 30, 8)
 
-# Trailing stop
+# --- Trailing Stop ---
 st.sidebar.subheader("Trailing Stop (Optional)")
 use_trailing = st.sidebar.checkbox("Enable trailing stop", value=True)
 trail_pct = st.sidebar.slider("Trailing stop (%)", 5, 50, 20)
@@ -45,29 +45,34 @@ def get_global():
         r = requests.get("https://api.coingecko.com/api/v3/global", timeout=20)
         r.raise_for_status()
         return r.json()
-    except: return None
+    except:
+        return None
 
 @st.cache_data(ttl=300)
 def get_ethbtc():
     try:
         r = requests.get(
             "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids":"ethereum","vs_currencies":"btc"}, timeout=20
+            params={"ids":"ethereum","vs_currencies":"btc"},
+            timeout=20
         )
         r.raise_for_status()
         return float(r.json()["ethereum"]["btc"])
-    except: return None
+    except:
+        return None
 
 @st.cache_data(ttl=300)
 def get_prices_usd(ids):
     try:
         r = requests.get(
             "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids": ",".join(ids), "vs_currencies": "usd"}, timeout=20
+            params={"ids": ",".join(ids), "vs_currencies": "usd"},
+            timeout=20
         )
         r.raise_for_status()
         return r.json()
-    except: return {}
+    except:
+        return {}
 
 @st.cache_data(ttl=300)
 def get_fear_greed():
@@ -76,7 +81,8 @@ def get_fear_greed():
         r.raise_for_status()
         data = r.json()["data"][0]
         return int(data["value"]), data["value_classification"]
-    except: return None, None
+    except:
+        return None, None
 
 @st.cache_data(ttl=300)
 def get_top_alts_safe(n=30):
@@ -90,7 +96,8 @@ def get_top_alts_safe(n=30):
                 "page": 1,
                 "sparkline": "false",
                 "price_change_percentage": "24h,7d"
-            }, timeout=20
+            },
+            timeout=20
         )
         r.raise_for_status()
         data = [x for x in r.json() if x["symbol"].upper() not in ("BTC","ETH")][:n]
@@ -99,44 +106,51 @@ def get_top_alts_safe(n=30):
             "Coin": x["symbol"].upper(),
             "Name": x["name"],
             "Price ($)": x["current_price"],
-            "24h %": x.get("price_change_percentage_24h_in_currency"),
-            "7d %": x.get("price_change_percentage_7d_in_currency"),
+            "24h %": x.get("price_change_percentage_24h_in_currency",0.0),
+            "7d %": x.get("price_change_percentage_7d_in_currency",0.0),
             "Mkt Cap ($B)": (x["market_cap"] or 0)/1e9
         } for x in data])
         return df
-    except: return pd.DataFrame()
+    except:
+        return pd.DataFrame()
 
 @st.cache_data(ttl=120)
 def get_rsi_macd_volume():
-    return 72, 0.002, False  # placeholder
+    return 72, 0.002, False  # Placeholder: RSI, MACD hist divergence, volume divergence
 
 @st.cache_data(ttl=3600)
 def get_btc_history(days=365):
     try:
         r = requests.get(
             f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
-            params={"vs_currency":"usd","days":days,"interval":"daily"}, timeout=30
+            params={"vs_currency":"usd","days":days,"interval":"daily"},
+            timeout=60
         )
         r.raise_for_status()
-        df = pd.DataFrame(r.json()["prices"], columns=["timestamp","price"])
+        data = r.json()
+        df = pd.DataFrame(data["prices"], columns=["timestamp","price"])
         df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
         df.set_index("date", inplace=True)
         return df[["price"]]
-    except: return pd.DataFrame()
+    except:
+        return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
 def get_eth_history(days=365):
     try:
         r = requests.get(
             f"https://api.coingecko.com/api/v3/coins/ethereum/market_chart",
-            params={"vs_currency":"usd","days":days,"interval":"daily"}, timeout=30
+            params={"vs_currency":"usd","days":days,"interval":"daily"},
+            timeout=60
         )
         r.raise_for_status()
-        df = pd.DataFrame(r.json()["prices"], columns=["timestamp","price"])
+        data = r.json()
+        df = pd.DataFrame(data["prices"], columns=["timestamp","price"])
         df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
         df.set_index("date", inplace=True)
         return df[["price"]]
-    except: return pd.DataFrame()
+    except:
+        return pd.DataFrame()
 
 # =========================
 # Signals Builder
@@ -183,29 +197,30 @@ st.markdown("---")
 # Key Market Signals
 # =========================
 st.markdown("### 📊 Key Market Signals & Explanations")
-signal_desc = {
-    "Dom < First Break":"BTC losing market share → altcoins may start moving up.",
-    "Dom < Strong Confirm":"Confirms major rotation into altcoins → potential altseason.",
-    "ETH/BTC Breakout":"ETH outperforming BTC → bullish for ETH and altcoins.",
-    "F&G ≥ 80":"Extreme greed → market may be overbought.",
-    "RSI > 70":"BTC overbought → possible short-term correction.",
-    "MACD Divergence":"Momentum slowing → potential reversal.",
-    "Rotate to Alts":"Strong rotation signal → move funds into altcoins.",
-    "Profit Mode":"Suggests scaling out of positions / taking profit.",
-    "Full Exit Watch":"Extreme signal → consider exiting major positions.",
-    "MVRV Z-Score":"BTC historically overvalued when MVRV Z > 7.",
-    "SOPR LTH":"Long-term holder SOPR > 1.5 → high profit taking.",
-    "Exchange Inflow":"Exchange inflows spike → whales moving BTC to exchanges.",
-    "Pi Cycle Top":"MA111 > MA350 → potential market top.",
-    "Funding Rate":"Perpetual funding > 0.2% long → market over-leveraged."
+signal_descriptions = {
+    "Dom < First Break": "BTC losing market share → altcoins may start moving up.",
+    "Dom < Strong Confirm": "Confirms major rotation into altcoins → potential altseason.",
+    "ETH/BTC Breakout": "ETH outperforming BTC → bullish for ETH and altcoins.",
+    "F&G ≥ 80": "Extreme greed → market may be overbought.",
+    "RSI > 70": "BTC overbought → possible short-term correction.",
+    "MACD Divergence": "Momentum slowing → potential reversal.",
+    "Rotate to Alts": "Strong rotation signal → move funds into altcoins.",
+    "Profit Mode": "Suggests scaling out of positions / taking profit.",
+    "Full Exit Watch": "Extreme signal → consider exiting major positions.",
+    "MVRV Z-Score": "BTC historically overvalued when MVRV Z > 7.",
+    "SOPR LTH": "Long-term holder SOPR > 1.5 → high profit taking.",
+    "Exchange Inflow": "Exchange inflows spike → whales moving BTC to exchanges.",
+    "Pi Cycle Top": "MA111 > MA350 → potential market top.",
+    "Funding Rate": "Perpetual funding > 0.2% long → market over-leveraged."
 }
 cols_per_row = 3
-items = list(signal_desc.items())
-for i in range(0, len(items), cols_per_row):
-    cols = st.columns(min(cols_per_row, len(items)-i))
-    for j, (name, desc) in enumerate(items[i:i+cols_per_row]):
+signal_items = list(signal_descriptions.items())
+for i in range(0, len(signal_items), cols_per_row):
+    cols = st.columns(min(cols_per_row, len(signal_items)-i))
+    for j, (name, desc) in enumerate(signal_items[i:i+cols_per_row]):
         active = bool(sig.get(name, False))
-        cols[j].markdown(f"{'🟢' if active else '🔴'} **{name}**  \n{desc}")
+        status_emoji = "🟢" if active else "🔴"
+        cols[j].markdown(f"{status_emoji} **{name}**  \n{desc}")
 
 # =========================
 # ETH/BTC Ratio Chart
@@ -216,28 +231,32 @@ btc_hist = get_btc_history(days=365)
 eth_hist = get_eth_history(days=365)
 if not btc_hist.empty and not eth_hist.empty:
     df_ratio = pd.DataFrame({
-        "ETH/BTC": eth_hist["price"].values / btc_hist["price"].values,
-        "Date": eth_hist.index
+        'ETH/BTC': eth_hist['price'].values / btc_hist['price'].values,
+        'Date': eth_hist.index
     })
-    fig_ratio = px.line(df_ratio, x="Date", y="ETH/BTC", title="ETH/BTC Ratio 1-Year")
-    fig_ratio.add_hline(y=ethbtc_break, line_dash="dash", line_color="red", annotation_text="Breakout Level", annotation_position="top left")
+    fig_ratio = px.line(df_ratio, x='Date', y='ETH/BTC', title='ETH/BTC Ratio 1-Year')
+    fig_ratio.add_hline(y=ethbtc_break, line_dash="dash", line_color="red",
+                        annotation_text="Breakout Level", annotation_position="top left")
     st.plotly_chart(fig_ratio, use_container_width=True)
-else: st.warning("ETH/BTC history data not available.")
+else:
+    st.warning("ETH/BTC history data not available.")
 
 # =========================
-# BTC Resistance Chart
+# BTC Price & Resistance Levels (Removed 200k)
 # =========================
 st.markdown("---")
 st.header("🛡️ BTC Price & Resistance Levels")
-btc_resistances = [114000, 120000, 123000, 220000, 223000]
+btc_resistances = [114000, 120000, 123000, 223000]
 if not btc_hist.empty:
     fig_btc = px.line(btc_hist, y='price', title="BTC Price (1-Year) with Resistance Levels")
     for level in btc_resistances:
-        fig_btc.add_hline(y=level, line_dash="dash", line_color="red", annotation_text=f"Resistance ${level:,}", annotation_position="top left")
+        fig_btc.add_hline(y=level, line_dash="dash", line_color="red",
+                          annotation_text=f"Resistance ${level:,.0f}", annotation_position="top left")
     fig_btc.update_yaxes(title="Price (USD)")
     fig_btc.update_xaxes(title="Date")
     st.plotly_chart(fig_btc, use_container_width=True)
-else: st.warning("BTC historical price data not available.")
+else:
+    st.warning("BTC historical price data not available.")
 
 # =========================
 # Profit Ladder Planner
@@ -247,8 +266,8 @@ st.header("🎯 Profit-Taking Ladder")
 def build_ladder(entry, step_pct, sell_pct, max_steps):
     rows = []
     if entry <= 0: return pd.DataFrame(rows)
-    for i in range(1, max_steps+1):
-        target = entry*(1+step_pct/100)**i
+    for i in range(1,max_steps+1):
+        target = entry*(1+step_pct/100.0)**i
         rows.append({
             "Step #": i,
             "Target Price": round(target,2),
@@ -259,7 +278,7 @@ def build_ladder(entry, step_pct, sell_pct, max_steps):
 
 btc_ladder = build_ladder(entry_btc, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
 eth_ladder = build_ladder(entry_eth, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
-cL, cR = st.columns(2)
+cL,cR = st.columns(2)
 with cL: st.subheader("BTC Ladder"); st.dataframe(btc_ladder,use_container_width=True)
 with cR: st.subheader("ETH Ladder"); st.dataframe(eth_ladder,use_container_width=True)
 
@@ -269,51 +288,60 @@ with cR: st.subheader("ETH Ladder"); st.dataframe(eth_ladder,use_container_width
 if use_trailing and btc_price:
     st.markdown("---")
     st.subheader("🛡️ Trailing Stop Guidance")
-    btc_stop = round(btc_price*(1-trail_pct/100),2)
-    eth_stop = round(eth_price*(1-trail_pct/100),2) if eth_price else None
+    btc_stop = round(btc_price*(1-trail_pct/100.0),2)
+    eth_stop = round(eth_price*(1-trail_pct/100.0),2) if eth_price else None
     st.write(f"- Suggested BTC stop: ${btc_stop:,.2f}")
     if eth_stop: st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
-# Altcoin Rotation Treemap
+# Altcoin Heatmap
 # =========================
 st.markdown("---")
 st.header("🔥 Altcoin Rotation Heatmap (TradingView-Style)")
 alt_df = get_top_alts_safe(30)
+
+def rotation_tag(row, rotate_signal):
+    if rotate_signal and row.get('7d %', 0) > 0:
+        return "✅ Rotate In"
+    if row.get('7d %', 0) < 0:
+        return "⛔ Avoid"
+    return "⚠️ Wait"
+
 if not alt_df.empty:
-    alt_df.fillna(0, inplace=True)
-    def rotation_tag(r): return "✅ Rotate In" if sig.get("Rotate to Alts", False) and r["7d %"]>0 else ("⛔ Avoid" if r["7d %"]<0 else "⚠️ Wait")
-    alt_df["Rotation"] = alt_df.apply(rotation_tag, axis=1)
-    alt_df["Label"] = alt_df.apply(lambda r: f"{r['Coin']}\n{r['7d %']:.1f}%\n{r['Rotation']}", axis=1)
+    alt_df['7d %'] = alt_df['7d %'].fillna(0.0)
+    alt_df['24h %'] = alt_df['24h %'].fillna(0.0)
+    alt_df['Mkt Cap ($B)'] = alt_df['Mkt Cap ($B)'].fillna(0.0)
+    alt_df['Rotation'] = alt_df.apply(lambda r: rotation_tag(r, sig.get('Rotate to Alts', False)), axis=1)
+    alt_df['Label'] = alt_df.apply(lambda r: f"{r['Coin']}\n{r['7d %']:.1f}%\n{r['Rotation']}", axis=1)
+
     fig_treemap = go.Figure(go.Treemap(
         labels=alt_df["Label"],
         parents=[""]*len(alt_df),
         values=alt_df["Mkt Cap ($B)"],
         marker=dict(colors=alt_df["7d %"], colorscale="RdYlGn", cmid=0),
-        customdata=np.stack([alt_df["Name"], alt_df["Price ($)"], alt_df["24h %"], alt_df["7d %"], alt_df["Rotation"]], axis=-1),
-        hovertemplate="<b>%{customdata[0]}</b><br>Market Cap: %{value:.2f} B<br>Price: $%{customdata[1]:,.4f}<br>24h: %{customdata[2]:.2f}%<br>7d: %{customdata[3]:.2f}%<br>Rotation: %{customdata[4]}<extra></extra>"
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "Market Cap: %{value:.2f} B<br>"
+            "Price: $%{customdata[1]:,.4f}<br>"
+            "24h: %{customdata[2]:.2f}%<br>"
+            "7d: %{customdata[3]:.2f}%<br>"
+            "Rotation: %{customdata[4]}<extra></extra>"
+        ),
+        customdata=np.stack([alt_df["Name"], alt_df["Price ($)"], alt_df["24h %"], alt_df["7d %"], alt_df["Rotation"]], axis=-1)
     ))
     fig_treemap.update_layout(margin=dict(t=50,l=25,r=25,b=25), title="Altcoin Rotation by Market Cap & 7d Performance")
-    st.plotly_chart(fig_treemap,use_container_width=True)
-else: st.warning("No altcoin data available.")
+    st.plotly_chart(fig_treemap, use_container_width=True)
+else:
+    st.warning("No altcoin data available for rotation heatmap.")
 
 # =========================
-# Bitcoin Power Law Chart (Plotted)
+# Bitcoin Power Law Chart Explanation
 # =========================
 st.markdown("---")
-st.header("📐 Bitcoin Power Law Chart (Log Scale)")
-btc_hist_long = get_btc_history(days=365*5)
-if not btc_hist_long.empty:
-    df = btc_hist_long.reset_index()
-    df["Days"] = (df["date"] - df["date"].min()).dt.days + 1
-    df["LogDays"] = np.log10(df["Days"])
-    df["LogPrice"] = np.log10(df["price"])
-    coeffs = np.polyfit(df["LogDays"], df["LogPrice"], 1)
-    df["PowerLawFit"] = 10**(coeffs[0]*df["LogDays"] + coeffs[1])
-    fig_power = go.Figure()
-    fig_power.add_trace(go.Scatter(x=df["date"], y=df["price"], mode="lines", name="BTC Price", line=dict(color="blue")))
-    fig_power.add_trace(go.Scatter(x=df["date"], y=df["PowerLawFit"], mode="lines", name="Power Law Fit", line=dict(color="orange", dash="dot")))
-    fig_power.update_yaxes(type="log", title="Price (USD, log)")
-    fig_power.update_xaxes(title="Date")
-    st.plotly_chart(fig_power,use_container_width=True)
-else: st.warning("BTC historical data unavailable for Power Law chart.")
+st.markdown("## 📘 Bitcoin Power Law Chart")
+st.markdown("""
+### What Is the Bitcoin Power Law Chart?
+The Bitcoin Power Law Chart is a long-term price model suggesting BTC’s price follows a **power law** over time.
+It shows overbought/oversold zones vs. the trend, using logarithmic regression.
+""")
+st.info("👉 Use it as a **long-term valuation lens**, not a strict prediction tool.")
