@@ -34,7 +34,7 @@ st.sidebar.subheader("Trailing Stop (Optional)")
 use_trailing = st.sidebar.checkbox("Enable trailing stop", value=True)
 trail_pct = st.sidebar.slider("Trailing stop (%)", 5, 50, 20)
 
-st.sidebar.caption("This dashboard pulls live data at runtime (CoinGecko & Alternative.me).")
+st.sidebar.caption("Live data: CoinGecko & Alternative.me.")
 
 # =========================
 # Data Fetchers
@@ -86,7 +86,6 @@ def get_fear_greed():
 
 @st.cache_data(ttl=300)
 def get_top_alts_safe(n=30):
-    """Get top n altcoins (excluding BTC and ETH), returns DataFrame."""
     try:
         r = requests.get(
             "https://api.coingecko.com/api/v3/coins/markets",
@@ -117,8 +116,7 @@ def get_top_alts_safe(n=30):
 
 @st.cache_data(ttl=120)
 def get_rsi_macd_volume():
-    # Placeholder: in a real version fetch BTC price history and compute RSI/MACD/Volume divergence
-    return 72, 0.002, False  # RSI, MACD hist divergence, volume divergence
+    return 72, 0.002, False  # Placeholder
 
 @st.cache_data(ttl=3600)
 def get_btc_history(days=3650):
@@ -152,12 +150,7 @@ def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
         "Volume Divergence": vol_div,
         "Rotate to Alts": dom is not None and dom < dom_first and ethbtc is not None and ethbtc > ethbtc_break,
         "Profit Mode": dom is not None and (dom < dom_second or (fg_value is not None and fg_value>=80) or rsi>70 or macd_div or vol_div),
-        "Full Exit Watch": dom is not None and dom < dom_second and fg_value is not None and fg_value>=80,
-        "MVRV Z-Score": True,
-        "SOPR LTH": True,
-        "Exchange Inflow": True,
-        "Pi Cycle Top": True,
-        "Funding Rate": True
+        "Full Exit Watch": dom is not None and dom < dom_second and fg_value is not None and fg_value>=80
     }
     return sig
 
@@ -201,12 +194,7 @@ signal_descriptions = {
     "MACD Divergence": "Momentum slowing → potential reversal.",
     "Rotate to Alts": "Strong rotation signal → move funds into altcoins.",
     "Profit Mode": "Suggests scaling out of positions / taking profit.",
-    "Full Exit Watch": "Extreme signal → consider exiting major positions.",
-    "MVRV Z-Score": "BTC historically overvalued when MVRV Z > 7.",
-    "SOPR LTH": "Long-term holder SOPR > 1.5 → high profit taking.",
-    "Exchange Inflow": "Exchange inflows spike → whales moving BTC to exchanges.",
-    "Pi Cycle Top": "MA111 > MA350 → potential market top.",
-    "Funding Rate": "Perpetual funding > 0.2% long → market over-leveraged."
+    "Full Exit Watch": "Extreme signal → consider exiting major positions."
 }
 cols_per_row = 3
 signal_items = list(signal_descriptions.items())
@@ -252,14 +240,13 @@ if use_trailing and btc_price:
     if eth_stop: st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
-# Altcoin Dashboard
+# Altcoin Dashboard & Altseason Alert
 # =========================
 st.markdown("---")
 st.header("🔥 Altcoin Momentum & Rotation Dashboard (Top 30)")
 
 alt_df = get_top_alts_safe(30)
 if not alt_df.empty:
-    # Rotation Score
     min_val = alt_df[['7d %','24h %']].min().min()
     max_val = alt_df[['7d %','24h %']].max().max()
     alt_df['Rotation Score (%)'] = alt_df.apply(
@@ -268,60 +255,38 @@ if not alt_df.empty:
     )
     alt_df['Suggested Action'] = ['✅ Rotate In' if sig.get('Rotate to Alts') else '⚠️ Wait']*len(alt_df)
     
-    # Positive Momentum count
     positive_count = (alt_df['7d %']>0).sum()
     st.progress(positive_count/len(alt_df))
     st.write(f"Alts in Positive Momentum: {positive_count}/{len(alt_df)}")
     
-    # Heatmap
-    fig_heat = px.imshow([alt_df['Rotation Score (%)']], labels=dict(x="Coin", color="Rotation Score (%)"), x=alt_df['Coin'], y=["Rotation Score"], color_continuous_scale="RdYlGn")
+    fig_heat = px.imshow([alt_df['Rotation Score (%)']], labels=dict(x="Coin", color="Rotation Score (%)"),
+                         x=alt_df['Coin'], y=["Rotation Score"], color_continuous_scale="RdYlGn")
     st.plotly_chart(fig_heat, use_container_width=True)
     
-    # Market Cap vs 7-Day % Bubble
-    fig_bubble = px.scatter(alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %', hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60, title="Market Cap vs 7-Day % Change Bubble")
+    fig_bubble = px.scatter(alt_df, x='Mkt Cap ($B)', y='7d %', size='Mkt Cap ($B)', color='7d %',
+                            hover_name='Coin', color_continuous_scale='RdYlGn_r', size_max=60,
+                            title="Market Cap vs 7-Day % Change Bubble")
     st.plotly_chart(fig_bubble, use_container_width=True)
     
-    # Top Movers Table
     top_gainers = alt_df.sort_values('7d %', ascending=False).head(5)
     top_losers = alt_df.sort_values('7d %', ascending=True).head(5)
     st.subheader("🏆 Top Movers (7-Day %)")
     movers_df = pd.concat([top_gainers, top_losers])
     st.dataframe(movers_df[['Coin','7d %','24h %','Rotation Score (%)','Suggested Action']], use_container_width=True)
-
+    
+    # Altseason Alert
+    if sig.get('Rotate to Alts') and ethbtc > ethbtc_break:
+        st.success(f"🚨 ALTSEASON ALERT! ETH/BTC = {ethbtc:.3f} above breakout level {ethbtc_break:.3f}. Consider rotating into top alts!")
 else:
     st.warning("No altcoin data available for top selection.")
+
 # =========================
 # Bitcoin Power Law Chart Explanation
 # =========================
+st.markdown("---")
 st.markdown("## 📘 Bitcoin Power Law Chart")
-
 st.markdown("""
 ### What Is the Bitcoin Power Law Chart?
 The Bitcoin Power Law Chart is a long-term price model that suggests Bitcoin’s price follows a **power law function** over time.  
-Unlike traditional stock market models that assume linear or exponential growth, the power law model suggests that Bitcoin’s price scales in a predictable, non-random way over the long run.
-
-This model indicates that Bitcoin’s price movements are **not purely speculative or random**, but instead follow a structured mathematical pattern based on time.
+This indicates that Bitcoin’s price movements are **not purely random**, but follow a structured pattern.
 """)
-
-st.markdown("""
-### 🔬 How Is the Bitcoin Power Law Chart Calculated?
-- **Logarithmic Scale:** Price history is plotted on a log-log scale (time and price both in logs).  
-- **Power Law Regression:** A power function of the form *P(t) = a·t^b* is applied.  
-  - *P(t)* = Bitcoin’s price at time *t*  
-  - *a, b* = constants from historical data  
-  - *t* = time since inception  
-- **Price Bands:** Upper/lower bounds form a valuation corridor, showing when BTC is overbought/oversold vs. trend.
-""")
-
-st.markdown("""
-### ⚠️ Risks & Shortcomings
-- 📉 **Assumes Ongoing Growth:** Future adoption may slow or change.  
-- 🌍 **No Market Events:** Ignores regulations, macroeconomic shocks, or black swans.  
-- ⏳ **Based on Past Data:** May fail if Bitcoin’s growth path changes.  
-- 🚫 **Not Guaranteed:** Price can fall outside the predicted range.  
-- ⛏️ **No Supply Dynamics:** Unlike Stock-to-Flow, ignores halving/mining effects.  
-- ❗ **False Confidence Risk:** Shouldn’t be used as the only valuation model.
-""")
-
-st.info("👉 Use the Bitcoin Power Law Chart as a **long-term valuation lens**, not as a strict prediction tool. Always combine it with on-chain and market data.")
-
