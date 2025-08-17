@@ -245,16 +245,18 @@ else:
     st.warning("ETH/BTC history data not available.")
 
 # =========================
-# BTC Resistance Chart
+# BTC Resistance Chart (Updated)
 # =========================
 st.markdown("---")
 st.header("🛡️ BTC Price & Resistance Levels")
-btc_resistances = [31000, 34000, 37000]  # Example resistance levels
+btc_resistances = [114000, 120000, 123000, 220000, 223000]  # Updated 2025-relevant levels
 if not btc_hist.empty:
     fig_btc = px.line(btc_hist, y='price', title="BTC Price (1-Year) with Resistance Levels")
     for level in btc_resistances:
         fig_btc.add_hline(y=level, line_dash="dash", line_color="red",
-                          annotation_text=f"Resistance ${level}", annotation_position="top left")
+                          annotation_text=f"Resistance ${level:,.0f}", annotation_position="top left")
+    fig_btc.update_yaxes(title="Price (USD)")
+    fig_btc.update_xaxes(title="Date")
     st.plotly_chart(fig_btc, use_container_width=True)
 else:
     st.warning("BTC historical price data not available.")
@@ -276,6 +278,7 @@ def build_ladder(entry, step_pct, sell_pct, max_steps):
             "Sell This Step (%)": sell_pct
         })
     return pd.DataFrame(rows)
+
 btc_ladder = build_ladder(entry_btc, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
 eth_ladder = build_ladder(entry_eth, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
 cL,cR = st.columns(2)
@@ -294,27 +297,64 @@ if use_trailing and btc_price:
     if eth_stop: st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
-# Altcoin Dashboard & Heatmap
+# Altcoin Dashboard & TradingView-Style Treemap
 # =========================
 st.markdown("---")
-st.header("🔥 Altcoin Rotation Heatmap")
+st.header("🔥 Altcoin Rotation Heatmap (TradingView-Style Treemap)")
 alt_df = get_top_alts_safe(30)
-if not alt_df.empty:
-    alt_df['Suggested Action'] = ['✅ Rotate In' if x['7d %']>0 else '⚠️ Wait' for _, x in alt_df.iterrows()]
-    min_val = alt_df['7d %'].min()
-    max_val = alt_df['7d %'].max()
-    alt_df['Rotation Score (%)'] = alt_df['7d %'].apply(lambda x: round(100*(x-min_val)/(max_val-min_val),2))
 
-    color_map = {'✅ Rotate In': 'green', '⚠️ Wait': 'orange'}
-    fig_heat = px.imshow([alt_df['Rotation Score (%)']], 
-                         labels=dict(x="Coin", color="Rotation Score (%)"), 
-                         x=alt_df['Coin'], y=["Rotation Score"], 
-                         color_continuous_scale="RdYlGn")
-    for idx, action in enumerate(alt_df['Suggested Action']):
-        fig_heat.add_annotation(
-            x=idx, y=0, text=action, showarrow=False, font=dict(color=color_map[action])
-        )
-    st.plotly_chart(fig_heat, use_container_width=True)
+def rotation_tag(row, rotate_signal):
+    if rotate_signal and (row.get('7d %', 0) or 0) > 0:
+        return "✅ Rotate In"
+    if (row.get('7d %', 0) or 0) < 0:
+        return "⛔ Avoid"
+    return "⚠️ Wait"
+
+if not alt_df.empty:
+    # Clean NaNs
+    alt_df['7d %'] = alt_df['7d %'].fillna(0.0)
+    alt_df['24h %'] = alt_df['24h %'].fillna(0.0)
+    alt_df['Mkt Cap ($B)'] = alt_df['Mkt Cap ($B)'].fillna(0.0)
+
+    # Rotation tags based on signal + momentum
+    alt_df['Rotation'] = alt_df.apply(lambda r: rotation_tag(r, sig.get('Rotate to Alts', False)), axis=1)
+
+    # Label inside each block (coin, 7d %, rotation tag)
+    alt_df['Label'] = alt_df.apply(
+        lambda r: f"{r['Coin']}\n{r['7d %']:.1f}%\n{r['Rotation']}", axis=1
+    )
+
+    # Treemap (size = market cap, color = 7d %; cmid=0 centers at 0% like TV)
+    fig_treemap = go.Figure(go.Treemap(
+        labels=alt_df["Label"],
+        parents=[""] * len(alt_df),
+        values=alt_df["Mkt Cap ($B)"],
+        marker=dict(
+            colors=alt_df["7d %"],
+            colorscale="RdYlGn",
+            cmid=0
+        ),
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "Market Cap: %{value:.2f} B<br>"
+            "Price: $%{customdata[1]:,.4f}<br>"
+            "24h: %{customdata[2]:.2f}%<br>"
+            "7d: %{customdata[3]:.2f}%<br>"
+            "Rotation: %{customdata[4]}<extra></extra>"
+        ),
+        customdata=np.stack([
+            alt_df["Name"].values,
+            alt_df["Price ($)"].values,
+            alt_df["24h %"].values,
+            alt_df["7d %"].values,
+            alt_df["Rotation"].values
+        ], axis=-1)
+    ))
+    fig_treemap.update_layout(
+        margin=dict(t=50, l=25, r=25, b=25),
+        title="Altcoin Rotation by Market Cap (Size) & 7d Performance (Color)"
+    )
+    st.plotly_chart(fig_treemap, use_container_width=True)
 else:
     st.warning("No altcoin data available for rotation heatmap.")
 
