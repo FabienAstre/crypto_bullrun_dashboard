@@ -242,21 +242,39 @@ else:
     st.warning("ETH/BTC history data not available.")
 
 # =========================
-# BTC Price & Resistance Levels (Removed 200k)
+# BTC Price & Resistance Levels (Zoom enabled, 200k removed)
 # =========================
 st.markdown("---")
 st.header("🛡️ BTC Price & Resistance Levels")
-btc_resistances = [114000, 120000, 123000, 223000]
+
+# Removed 200k, keeping only valid resistances
+btc_resistances = [114000, 120000, 123000]
+
 if not btc_hist.empty:
     fig_btc = px.line(btc_hist, y='price', title="BTC Price (1-Year) with Resistance Levels")
+
+    # Add horizontal resistance lines
     for level in btc_resistances:
-        fig_btc.add_hline(y=level, line_dash="dash", line_color="red",
-                          annotation_text=f"Resistance ${level:,.0f}", annotation_position="top left")
+        fig_btc.add_hline(
+            y=level, 
+            line_dash="dash", 
+            line_color="red",
+            annotation_text=f"Resistance ${level:,.0f}", 
+            annotation_position="top left"
+        )
+
+    # Labels + Zooming enabled
     fig_btc.update_yaxes(title="Price (USD)")
     fig_btc.update_xaxes(title="Date")
+    fig_btc.update_layout(
+        xaxis=dict(rangeslider=dict(visible=True)),  # adds zoomable range slider
+        dragmode="zoom"  # allows zooming by dragging
+    )
+
     st.plotly_chart(fig_btc, use_container_width=True)
 else:
     st.warning("BTC historical price data not available.")
+
 
 # =========================
 # Profit Ladder Planner
