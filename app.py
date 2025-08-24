@@ -358,11 +358,21 @@ else:
 st.markdown("---")
 st.header("📏 Fibonacci Levels Calculator")
 
-# Crypto selection dropdown
-crypto_choice = st.selectbox(
+# --- Map Symbols to CoinGecko IDs ---
+symbol_to_id = {"BTC": "bitcoin", "ETH": "ethereum"}
+if not alt_df.empty:
+    # Convert altcoin names to CoinGecko-style IDs
+    for idx, row in alt_df.iterrows():
+        symbol_to_id[row["Coin"]] = row["Name"].lower().replace(" ", "-")
+
+# Dropdown uses symbols
+crypto_symbol = st.selectbox(
     "Select Crypto for Fibonacci Calculation",
-    ["bitcoin", "ethereum"] + list(alt_df["Coin"].str.lower()) if not alt_df.empty else ["bitcoin", "ethereum"]
+    list(symbol_to_id.keys())
 )
+
+# Map to CoinGecko ID for API
+crypto_id = symbol_to_id[crypto_symbol]
 
 # Fetch historical data for selected crypto
 @st.cache_data(ttl=3600)
@@ -382,12 +392,13 @@ def get_crypto_history(crypto_id, days=365):
     except:
         return pd.DataFrame()
 
-crypto_hist = get_crypto_history(crypto_choice)
+crypto_hist = get_crypto_history(crypto_id)
+
 if not crypto_hist.empty:
     high = crypto_hist["price"].max()
     low = crypto_hist["price"].min()
 
-    st.write(f"Analyzing {crypto_choice.upper()} from {crypto_hist.index.min().date()} to {crypto_hist.index.max().date()}")
+    st.write(f"Analyzing {crypto_symbol} from {crypto_hist.index.min().date()} to {crypto_hist.index.max().date()}")
     st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
 
     # Fibonacci levels (classic: 0.236, 0.382, 0.5, 0.618, 0.786)
@@ -403,15 +414,22 @@ if not crypto_hist.empty:
 
     # Plot chart with Fibonacci levels
     fig_fib = go.Figure()
-    fig_fib.add_trace(go.Scatter(x=crypto_hist.index, y=crypto_hist["price"], name=f"{crypto_choice.upper()} Price"))
+    fig_fib.add_trace(go.Scatter(x=crypto_hist.index, y=crypto_hist["price"], name=f"{crypto_symbol} Price"))
 
     for lv, r in zip(fib_levels, fib_ratios):
-        fig_fib.add_hline(y=lv, line_dash="dash", line_color="orange", 
-                           annotation_text=f"Fib {r*100:.1f}%: ${lv:,.0f}",
-                           annotation_position="top left")
+        fig_fib.add_hline(
+            y=lv,
+            line_dash="dash",
+            line_color="orange", 
+            annotation_text=f"Fib {r*100:.1f}%: ${lv:,.2f}",
+            annotation_position="top left"
+        )
 
-    fig_fib.update_layout(title=f"{crypto_choice.upper()} Price with Fibonacci Levels",
-                          yaxis_title="Price (USD)", xaxis_title="Date")
+    fig_fib.update_layout(
+        title=f"{crypto_symbol} Price with Fibonacci Levels",
+        yaxis_title="Price (USD)",
+        xaxis_title="Date"
+    )
     st.plotly_chart(fig_fib, use_container_width=True)
 else:
-    st.warning(f"No historical data available for {crypto_choice.upper()}.")
+    st.warning(f"No historical data available for {crypto_symbol}.")
