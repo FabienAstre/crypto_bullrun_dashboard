@@ -351,85 +351,103 @@ if not alt_df.empty:
     st.plotly_chart(fig_treemap, use_container_width=True)
 else:
     st.warning("No altcoin data available for rotation heatmap.")
-
 # =========================
 # Fibonacci Levels Calculator
 # =========================
 st.markdown("---")
 st.header("📏 Fibonacci Levels Calculator")
 
-# --- Map Symbols to CoinGecko IDs ---
-symbol_to_id = {"BTC": "bitcoin", "ETH": "ethereum"}
-if not alt_df.empty:
-    # Convert altcoin names to CoinGecko-style IDs
-    for idx, row in alt_df.iterrows():
-        symbol_to_id[row["Coin"]] = row["Name"].lower().replace(" ", "-")
+# -------------------------
+# Fetch Coin List for Symbol -> ID Mapping
+# -------------------------
+@st.cache_data(ttl=3600)
+def get_coingecko_coin_list():
+    try:
+        r = requests.get("https://api.coingecko.com/api/v3/coins/list", timeout=20)
+        r.raise_for_status()
+        coins = r.json()  # List of dicts with 'id', 'symbol', 'name'
+        # Map symbols (upper case) to CoinGecko IDs
+        return {c['symbol'].upper(): c['id'] for c in coins}
+    except:
+        return {}
 
-# Dropdown uses symbols
+symbol_to_id = get_coingecko_coin_list()
+# Ensure BTC/ETH are included
+symbol_to_id.update({"BTC": "bitcoin", "ETH": "ethereum"})
+
+# -------------------------
+# Dropdown for selecting crypto
+# -------------------------
 crypto_symbol = st.selectbox(
     "Select Crypto for Fibonacci Calculation",
-    list(symbol_to_id.keys())
+    sorted(list(symbol_to_id.keys()))
 )
 
-# Map to CoinGecko ID for API
-crypto_id = symbol_to_id[crypto_symbol]
-
-# Fetch historical data for selected crypto
-@st.cache_data(ttl=3600)
-def get_crypto_history(crypto_id, days=365):
-    try:
-        r = requests.get(
-            f"https://api.coingecko.com/api/v3/coins/{crypto_id}/market_chart",
-            params={"vs_currency": "usd", "days": days, "interval": "daily"},
-            timeout=60
-        )
-        r.raise_for_status()
-        data = r.json()
-        df = pd.DataFrame(data["prices"], columns=["timestamp","price"])
-        df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
-        df.set_index("date", inplace=True)
-        return df[["price"]]
-    except:
-        return pd.DataFrame()
-
-crypto_hist = get_crypto_history(crypto_id)
-
-if not crypto_hist.empty:
-    high = crypto_hist["price"].max()
-    low = crypto_hist["price"].min()
-
-    st.write(f"Analyzing {crypto_symbol} from {crypto_hist.index.min().date()} to {crypto_hist.index.max().date()}")
-    st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
-
-    # Fibonacci levels (classic: 0.236, 0.382, 0.5, 0.618, 0.786)
-    fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-    fib_levels = [low + (high - low)*r for r in fib_ratios]
-
-    fib_df = pd.DataFrame({
-        "Fibonacci Ratio": fib_ratios,
-        "Level ($)": [round(lv,2) for lv in fib_levels]
-    })
-
-    st.dataframe(fib_df, use_container_width=True)
-
-    # Plot chart with Fibonacci levels
-    fig_fib = go.Figure()
-    fig_fib.add_trace(go.Scatter(x=crypto_hist.index, y=crypto_hist["price"], name=f"{crypto_symbol} Price"))
-
-    for lv, r in zip(fib_levels, fib_ratios):
-        fig_fib.add_hline(
-            y=lv,
-            line_dash="dash",
-            line_color="orange", 
-            annotation_text=f"Fib {r*100:.1f}%: ${lv:,.2f}",
-            annotation_position="top left"
-        )
-
-    fig_fib.update_layout(
-        title=f"{crypto_symbol} Price with Fibonacci Levels",
-        yaxis_title="Price (USD)",
-        xaxis_title="Date"
-    )
-    st.plotly_chart(fig_fib, use_container_width=True)
+crypto_id = symbol_to_id.get(crypto_symbol)
+if not crypto_id:
+    st.warning(f"No CoinGecko ID found for {crypto_symbol}. Cannot fetch historical data.")
 else:
-    st.warning(f"No historical data available for {crypto_symbol}.")
+    # -------------------------
+    # Fetch historical data
+    # -------------------------
+    @st.cache_data(ttl=3600)
+    def get_crypto_history(crypto_id, days=365):
+        try:
+            r = requests.get(
+                f"https://api.coingecko.com/api/v3/coins/{crypto_id}/market_chart",
+                params={"vs_currency": "usd", "days": days, "interval": "daily"},
+                timeout=60
+            )
+            r.raise_for_status()
+            data = r.json()
+            df = pd.DataFrame(data["prices"], columns=["timestamp","price"])
+            df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
+            df.set_index("date", inplace=True)
+            return df[["price"]]
+        except:
+            return pd.DataFrame()
+
+    crypto_hist = get_crypto_history(crypto_id)
+
+    if not crypto_hist.empty:
+        high = crypto_hist["price"].max()
+        low = crypto_hist["price"].min()
+
+        st.write(f"Analyzing {crypto_symbol} from {crypto_hist.index.min().date()} to {crypto_hist.index.max().date()}")
+        st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
+
+        # -------------------------
+        # Fibonacci levels (classic)
+        # -------------------------
+        fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+        fib_levels = [low + (high - low)*r for r in fib_ratios]
+
+        fib_df = pd.DataFrame({
+            "Fibonacci Ratio": fib_ratios,
+            "Level ($)": [round(lv,2) for lv in fib_levels]
+        })
+        st.dataframe(fib_df, use_container_width=True)
+
+        # -------------------------
+        # Plot chart with Fibonacci levels
+        # -------------------------
+        fig_fib = go.Figure()
+        fig_fib.add_trace(go.Scatter(x=crypto_hist.index, y=crypto_hist["price"], name=f"{crypto_symbol} Price"))
+
+        for lv, r in zip(fib_levels, fib_ratios):
+            fig_fib.add_hline(
+                y=lv,
+                line_dash="dash",
+                line_color="orange",
+                annotation_text=f"Fib {r*100:.1f}%: ${lv:,.2f}",
+                annotation_position="top left"
+            )
+
+        fig_fib.update_layout(
+            title=f"{crypto_symbol} Price with Fibonacci Levels",
+            yaxis_title="Price (USD)",
+            xaxis_title="Date"
+        )
+        st.plotly_chart(fig_fib, use_container_width=True)
+    else:
+        st.warning(f"No historical data available for {crypto_symbol}.")
