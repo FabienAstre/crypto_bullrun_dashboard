@@ -353,13 +353,65 @@ else:
     st.warning("No altcoin data available for rotation heatmap.")
 
 # =========================
-# Bitcoin Power Law Chart Explanation
+# Fibonacci Levels Calculator
 # =========================
 st.markdown("---")
-st.markdown("## 📘 Bitcoin Power Law Chart")
-st.markdown("""
-### What Is the Bitcoin Power Law Chart?
-The Bitcoin Power Law Chart is a long-term price model suggesting BTC’s price follows a **power law** over time.
-It shows overbought/oversold zones vs. the trend, using logarithmic regression.
-""")
-st.info("👉 Use it as a **long-term valuation lens**, not a strict prediction tool.")
+st.header("📏 Fibonacci Levels Calculator")
+
+# Crypto selection dropdown
+crypto_choice = st.selectbox(
+    "Select Crypto for Fibonacci Calculation",
+    ["bitcoin", "ethereum"] + list(alt_df["Coin"].str.lower()) if not alt_df.empty else ["bitcoin", "ethereum"]
+)
+
+# Fetch historical data for selected crypto
+@st.cache_data(ttl=3600)
+def get_crypto_history(crypto_id, days=365):
+    try:
+        r = requests.get(
+            f"https://api.coingecko.com/api/v3/coins/{crypto_id}/market_chart",
+            params={"vs_currency": "usd", "days": days, "interval": "daily"},
+            timeout=60
+        )
+        r.raise_for_status()
+        data = r.json()
+        df = pd.DataFrame(data["prices"], columns=["timestamp","price"])
+        df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
+        df.set_index("date", inplace=True)
+        return df[["price"]]
+    except:
+        return pd.DataFrame()
+
+crypto_hist = get_crypto_history(crypto_choice)
+if not crypto_hist.empty:
+    high = crypto_hist["price"].max()
+    low = crypto_hist["price"].min()
+
+    st.write(f"Analyzing {crypto_choice.upper()} from {crypto_hist.index.min().date()} to {crypto_hist.index.max().date()}")
+    st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
+
+    # Fibonacci levels (classic: 0.236, 0.382, 0.5, 0.618, 0.786)
+    fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+    fib_levels = [low + (high - low)*r for r in fib_ratios]
+
+    fib_df = pd.DataFrame({
+        "Fibonacci Ratio": fib_ratios,
+        "Level ($)": [round(lv,2) for lv in fib_levels]
+    })
+
+    st.dataframe(fib_df, use_container_width=True)
+
+    # Plot chart with Fibonacci levels
+    fig_fib = go.Figure()
+    fig_fib.add_trace(go.Scatter(x=crypto_hist.index, y=crypto_hist["price"], name=f"{crypto_choice.upper()} Price"))
+
+    for lv, r in zip(fib_levels, fib_ratios):
+        fig_fib.add_hline(y=lv, line_dash="dash", line_color="orange", 
+                           annotation_text=f"Fib {r*100:.1f}%: ${lv:,.0f}",
+                           annotation_position="top left")
+
+    fig_fib.update_layout(title=f"{crypto_choice.upper()} Price with Fibonacci Levels",
+                          yaxis_title="Price (USD)", xaxis_title="Date")
+    st.plotly_chart(fig_fib, use_container_width=True)
+else:
+    st.warning(f"No historical data available for {crypto_choice.upper()}.")
