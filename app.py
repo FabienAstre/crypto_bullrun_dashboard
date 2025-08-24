@@ -358,56 +358,68 @@ st.markdown("---")
 st.header("📏 Fibonacci Levels Calculator")
 
 # -------------------------
-# Fetch Coin List for Symbol -> ID Mapping
+# Fetch Coin List for Symbol -> ID Mapping (dynamic)
 # -------------------------
 @st.cache_data(ttl=3600)
 def get_coingecko_coin_list():
     try:
         r = requests.get("https://api.coingecko.com/api/v3/coins/list", timeout=20)
         r.raise_for_status()
-        coins = r.json()  # List of dicts with 'id', 'symbol', 'name'
-        # Map symbols (upper case) to CoinGecko IDs
+        coins = r.json()
         return {c['symbol'].upper(): c['id'] for c in coins}
     except:
         return {}
 
 symbol_to_id = get_coingecko_coin_list()
-# Ensure BTC/ETH are included
 symbol_to_id.update({"BTC": "bitcoin", "ETH": "ethereum"})
 
 # -------------------------
-# Dropdown for selecting crypto
+# Crypto selection dropdown
 # -------------------------
 crypto_symbol = st.selectbox(
     "Select Crypto for Fibonacci Calculation",
     sorted(list(symbol_to_id.keys()))
 )
-
 crypto_id = symbol_to_id.get(crypto_symbol)
+
+# -------------------------
+# Date range selection
+# -------------------------
+start_date = st.date_input("Start Date", value=datetime.date.today() - datetime.timedelta(days=365))
+end_date = st.date_input("End Date", value=datetime.date.today())
+if start_date > end_date:
+    st.error("Error: Start date must be before End date.")
+
+# -------------------------
+# Fetch historical data
+# -------------------------
+@st.cache_data(ttl=3600)
+def get_crypto_history(crypto_id, days=365):
+    try:
+        r = requests.get(
+            f"https://api.coingecko.com/api/v3/coins/{crypto_id}/market_chart",
+            params={"vs_currency": "usd", "days": days, "interval": "daily"},
+            timeout=60
+        )
+        r.raise_for_status()
+        data = r.json()
+        df = pd.DataFrame(data["prices"], columns=["timestamp","price"])
+        df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
+        df.set_index("date", inplace=True)
+        return df[["price"]]
+    except:
+        return pd.DataFrame()
+
+# Calculate number of days for API call
+days_range = (end_date - start_date).days + 1
+
 if not crypto_id:
     st.warning(f"No CoinGecko ID found for {crypto_symbol}. Cannot fetch historical data.")
 else:
-    # -------------------------
-    # Fetch historical data
-    # -------------------------
-    @st.cache_data(ttl=3600)
-    def get_crypto_history(crypto_id, days=365):
-        try:
-            r = requests.get(
-                f"https://api.coingecko.com/api/v3/coins/{crypto_id}/market_chart",
-                params={"vs_currency": "usd", "days": days, "interval": "daily"},
-                timeout=60
-            )
-            r.raise_for_status()
-            data = r.json()
-            df = pd.DataFrame(data["prices"], columns=["timestamp","price"])
-            df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
-            df.set_index("date", inplace=True)
-            return df[["price"]]
-        except:
-            return pd.DataFrame()
+    crypto_hist = get_crypto_history(crypto_id, days=days_range)
 
-    crypto_hist = get_crypto_history(crypto_id)
+    # Filter to selected date range
+    crypto_hist = crypto_hist[(crypto_hist.index.date >= start_date) & (crypto_hist.index.date <= end_date)]
 
     if not crypto_hist.empty:
         high = crypto_hist["price"].max()
@@ -417,14 +429,14 @@ else:
         st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
 
         # -------------------------
-        # Fibonacci levels (classic)
+        # Fibonacci retracement levels
         # -------------------------
         fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-        fib_levels = [low + (high - low)*r for r in fib_ratios]
+        fib_levels = [low + (high - low) * r for r in fib_ratios]
 
         fib_df = pd.DataFrame({
             "Fibonacci Ratio": fib_ratios,
-            "Level ($)": [round(lv,2) for lv in fib_levels]
+            "Level ($)": [round(lv, 2) for lv in fib_levels]
         })
         st.dataframe(fib_df, use_container_width=True)
 
@@ -432,7 +444,12 @@ else:
         # Plot chart with Fibonacci levels
         # -------------------------
         fig_fib = go.Figure()
-        fig_fib.add_trace(go.Scatter(x=crypto_hist.index, y=crypto_hist["price"], name=f"{crypto_symbol} Price"))
+        fig_fib.add_trace(go.Scatter(
+            x=crypto_hist.index,
+            y=crypto_hist["price"],
+            name=f"{crypto_symbol} Price",
+            line=dict(color="blue")
+        ))
 
         for lv, r in zip(fib_levels, fib_ratios):
             fig_fib.add_hline(
@@ -446,8 +463,24 @@ else:
         fig_fib.update_layout(
             title=f"{crypto_symbol} Price with Fibonacci Levels",
             yaxis_title="Price (USD)",
-            xaxis_title="Date"
+            xaxis_title="Date",
+            hovermode="x unified"
         )
         st.plotly_chart(fig_fib, use_container_width=True)
+
+        # -------------------------
+        # Explanation for users
+        # -------------------------
+        st.markdown("---")
+        st.markdown("### 📘 How to Use the Fibonacci Chart")
+        st.markdown("""
+        - **Fibonacci retracement levels** are horizontal lines indicating potential support and resistance zones.
+        - **Common levels:** 23.6%, 38.2%, 50%, 61.8%, 78.6%.
+        - **Usage:**  
+          - Price often **retraces to a Fibonacci level** before continuing the trend.  
+          - Levels can be used for **entry, stop-loss, or take-profit targets**.  
+          - Combine with other indicators (RSI, MACD) for stronger signals.
+        - **Customize dates** to analyze different market periods.  
+        """)
     else:
-        st.warning(f"No historical data available for {crypto_symbol}.")
+        st.warning(f"No historical data available for {crypto_symbol} in the selected date range.")
