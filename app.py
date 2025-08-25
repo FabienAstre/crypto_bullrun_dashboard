@@ -358,7 +358,7 @@ st.markdown("---")
 st.header("📏 Fibonacci Levels Calculator")
 
 # -------------------------
-# Fetch Coin List for Symbol -> ID Mapping (dynamic)
+# Fetch Coin List for Symbol -> ID Mapping
 # -------------------------
 @st.cache_data(ttl=3600)
 def get_coingecko_coin_list():
@@ -416,77 +416,88 @@ def get_crypto_history(crypto_id, days=365):
     except:
         return pd.DataFrame()
 
+# Fetch enough days to cover selected range
 days_range = (end_date - start_date).days + 1
 crypto_hist = get_crypto_history(crypto_id, days=days_range)
 
 # -------------------------
-# Filter by selected date range
+# Safety checks and filtering
 # -------------------------
+if crypto_hist.empty:
+    st.warning(f"No historical data available for {crypto_input}.")
+    st.stop()
+
+# Ensure index is DatetimeIndex
+if not isinstance(crypto_hist.index, pd.DatetimeIndex):
+    crypto_hist.index = pd.to_datetime(crypto_hist.index)
+
+# Filter by user-selected dates
 crypto_hist_filtered = crypto_hist[
     (crypto_hist.index >= pd.to_datetime(start_date)) &
     (crypto_hist.index <= pd.to_datetime(end_date))
 ]
 
-if not crypto_hist_filtered.empty:
-    high = crypto_hist_filtered["price"].max()
-    low = crypto_hist_filtered["price"].min()
-
-    st.write(f"Analyzing {crypto_input} from {crypto_hist_filtered.index.min().date()} to {crypto_hist_filtered.index.max().date()}")
-    st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
-
-    # -------------------------
-    # Fibonacci retracement levels
-    # -------------------------
-    fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-    fib_levels = [low + (high - low) * r for r in fib_ratios]
-
-    fib_df = pd.DataFrame({
-        "Fibonacci Ratio": fib_ratios,
-        "Level ($)": [round(lv, 2) for lv in fib_levels]
-    })
-    st.dataframe(fib_df, use_container_width=True)
-
-    # -------------------------
-    # Plot chart with Fibonacci levels
-    # -------------------------
-    fig_fib = go.Figure()
-    fig_fib.add_trace(go.Scatter(
-        x=crypto_hist_filtered.index,
-        y=crypto_hist_filtered["price"],
-        name=f"{crypto_input} Price",
-        line=dict(color="blue")
-    ))
-
-    for lv, r in zip(fib_levels, fib_ratios):
-        fig_fib.add_hline(
-            y=lv,
-            line_dash="dash",
-            line_color="orange",
-            annotation_text=f"Fib {r*100:.1f}%: ${lv:,.2f}",
-            annotation_position="top left"
-        )
-
-    fig_fib.update_layout(
-        title=f"{crypto_input} Price with Fibonacci Levels",
-        yaxis_title="Price (USD)",
-        xaxis_title="Date",
-        hovermode="x unified"
-    )
-    st.plotly_chart(fig_fib, use_container_width=True)
-
-    # -------------------------
-    # Explanation for users
-    # -------------------------
-    st.markdown("---")
-    st.markdown("### 📘 How to Use the Fibonacci Chart")
-    st.markdown("""
-    - **Fibonacci retracement levels** are horizontal lines indicating potential support and resistance zones.
-    - **Common levels:** 23.6%, 38.2%, 50%, 61.8%, 78.6%.
-    - **Usage:**  
-      - Price often **retraces to a Fibonacci level** before continuing the trend.  
-      - Levels can be used for **entry, stop-loss, or take-profit targets**.  
-      - Combine with other indicators (RSI, MACD) for stronger signals.
-    - **Customize dates** to analyze different market periods.  
-    """)
-else:
+if crypto_hist_filtered.empty:
     st.warning(f"No historical data available for {crypto_input} in the selected date range.")
+    st.stop()
+
+# -------------------------
+# Fibonacci retracement levels
+# -------------------------
+high = crypto_hist_filtered["price"].max()
+low = crypto_hist_filtered["price"].min()
+
+st.write(f"Analyzing {crypto_input} from {crypto_hist_filtered.index.min().date()} to {crypto_hist_filtered.index.max().date()}")
+st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
+
+fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+fib_levels = [low + (high - low) * r for r in fib_ratios]
+
+fib_df = pd.DataFrame({
+    "Fibonacci Ratio": fib_ratios,
+    "Level ($)": [round(lv, 2) for lv in fib_levels]
+})
+st.dataframe(fib_df, use_container_width=True)
+
+# -------------------------
+# Plot chart with Fibonacci levels
+# -------------------------
+fig_fib = go.Figure()
+fig_fib.add_trace(go.Scatter(
+    x=crypto_hist_filtered.index,
+    y=crypto_hist_filtered["price"],
+    name=f"{crypto_input} Price",
+    line=dict(color="blue")
+))
+
+for lv, r in zip(fib_levels, fib_ratios):
+    fig_fib.add_hline(
+        y=lv,
+        line_dash="dash",
+        line_color="orange",
+        annotation_text=f"Fib {r*100:.1f}%: ${lv:,.2f}",
+        annotation_position="top left"
+    )
+
+fig_fib.update_layout(
+    title=f"{crypto_input} Price with Fibonacci Levels",
+    yaxis_title="Price (USD)",
+    xaxis_title="Date",
+    hovermode="x unified"
+)
+st.plotly_chart(fig_fib, use_container_width=True)
+
+# -------------------------
+# Explanation for users
+# -------------------------
+st.markdown("---")
+st.markdown("### 📘 How to Use the Fibonacci Chart")
+st.markdown("""
+- **Fibonacci retracement levels** are horizontal lines indicating potential support and resistance zones.
+- **Common levels:** 23.6%, 38.2%, 50%, 61.8%, 78.6%.
+- **Usage:**  
+  - Price often **retraces to a Fibonacci level** before continuing the trend.  
+  - Levels can be used for **entry, stop-loss, or take-profit targets**.  
+  - Combine with other indicators (RSI, MACD) for stronger signals.
+- **Customize dates** to analyze different market periods.  
+""")
