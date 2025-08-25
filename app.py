@@ -357,48 +357,13 @@ else:
 st.markdown("---")
 st.header("📏 Fibonacci Levels Calculator")
 
-# -------------------------
-# Fetch Coin List for Symbol -> ID Mapping
-# -------------------------
-@st.cache_data(ttl=3600)
-def get_coingecko_coin_list():
-    try:
-        r = requests.get("https://api.coingecko.com/api/v3/coins/list", timeout=20)
-        r.raise_for_status()
-        coins = r.json()
-        return {c['symbol'].upper(): c['id'] for c in coins}
-    except:
-        return {}
+# Crypto selection dropdown
+crypto_choice = st.selectbox(
+    "Select Crypto for Fibonacci Calculation",
+    ["bitcoin", "ethereum"] + list(alt_df["Coin"].str.lower()) if not alt_df.empty else ["bitcoin", "ethereum"]
+)
 
-symbol_to_id = get_coingecko_coin_list()
-symbol_to_id.update({"BTC": "bitcoin", "ETH": "ethereum"})
-
-# -------------------------
-# Text input for coin symbol
-# -------------------------
-crypto_input = st.text_input(
-    "Enter coin symbol (e.g., BTC, ETH, XRP, DOGE):",
-    value="BTC"
-).upper()
-
-crypto_id = symbol_to_id.get(crypto_input)
-if not crypto_id:
-    if crypto_input != "":
-        st.warning(f"Coin '{crypto_input}' not found. Please check the symbol or try another one.")
-    st.stop()  # Stop execution if coin is invalid
-
-# -------------------------
-# Date range selection
-# -------------------------
-start_date = st.date_input("Start Date", value=datetime.date.today() - datetime.timedelta(days=365))
-end_date = st.date_input("End Date", value=datetime.date.today())
-if start_date > end_date:
-    st.error("Error: Start date must be before End date.")
-    st.stop()
-
-# -------------------------
-# Fetch historical data
-# -------------------------
+# Fetch historical data for selected crypto
 @st.cache_data(ttl=3600)
 def get_crypto_history(crypto_id, days=365):
     try:
@@ -416,77 +381,39 @@ def get_crypto_history(crypto_id, days=365):
     except:
         return pd.DataFrame()
 
-# Fetch enough days to cover selected range
-days_range = (end_date - start_date).days + 1
-crypto_hist = get_crypto_history(crypto_id, days=days_range)
+crypto_hist = get_crypto_history(crypto_choice)
+if not crypto_hist.empty:
+    high = crypto_hist["price"].max()
+    low = crypto_hist["price"].min()
 
-# -------------------------
-# Safety checks and filtering
-# -------------------------
-if crypto_hist.empty:
-    st.warning(f"No historical data available for {crypto_input}.")
-    st.stop()
+    st.write(f"Analyzing {crypto_choice.upper()} from {crypto_hist.index.min().date()} to {crypto_hist.index.max().date()}")
+    st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
 
-# Ensure index is DatetimeIndex
-if not isinstance(crypto_hist.index, pd.DatetimeIndex):
-    crypto_hist.index = pd.to_datetime(crypto_hist.index)
+    # Fibonacci levels (classic: 0.236, 0.382, 0.5, 0.618, 0.786)
+    fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+    fib_levels = [low + (high - low)*r for r in fib_ratios]
 
-# Filter by user-selected dates
-crypto_hist_filtered = crypto_hist[
-    (crypto_hist.index >= pd.to_datetime(start_date)) &
-    (crypto_hist.index <= pd.to_datetime(end_date))
-]
+    fib_df = pd.DataFrame({
+        "Fibonacci Ratio": fib_ratios,
+        "Level ($)": [round(lv,2) for lv in fib_levels]
+    })
 
-if crypto_hist_filtered.empty:
-    st.warning(f"No historical data available for {crypto_input} in the selected date range.")
-    st.stop()
+    st.dataframe(fib_df, use_container_width=True)
 
-# -------------------------
-# Fibonacci retracement levels
-# -------------------------
-high = crypto_hist_filtered["price"].max()
-low = crypto_hist_filtered["price"].min()
+    # Plot chart with Fibonacci levels
+    fig_fib = go.Figure()
+    fig_fib.add_trace(go.Scatter(x=crypto_hist.index, y=crypto_hist["price"], name=f"{crypto_choice.upper()} Price"))
 
-st.write(f"Analyzing {crypto_input} from {crypto_hist_filtered.index.min().date()} to {crypto_hist_filtered.index.max().date()}")
-st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
+    for lv, r in zip(fib_levels, fib_ratios):
+        fig_fib.add_hline(y=lv, line_dash="dash", line_color="orange", 
+                           annotation_text=f"Fib {r*100:.1f}%: ${lv:,.0f}",
+                           annotation_position="top left")
 
-fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-fib_levels = [low + (high - low) * r for r in fib_ratios]
-
-fib_df = pd.DataFrame({
-    "Fibonacci Ratio": fib_ratios,
-    "Level ($)": [round(lv, 2) for lv in fib_levels]
-})
-st.dataframe(fib_df, use_container_width=True)
-
-# -------------------------
-# Plot chart with Fibonacci levels
-# -------------------------
-fig_fib = go.Figure()
-fig_fib.add_trace(go.Scatter(
-    x=crypto_hist_filtered.index,
-    y=crypto_hist_filtered["price"],
-    name=f"{crypto_input} Price",
-    line=dict(color="blue")
-))
-
-for lv, r in zip(fib_levels, fib_ratios):
-    fig_fib.add_hline(
-        y=lv,
-        line_dash="dash",
-        line_color="orange",
-        annotation_text=f"Fib {r*100:.1f}%: ${lv:,.2f}",
-        annotation_position="top left"
-    )
-
-fig_fib.update_layout(
-    title=f"{crypto_input} Price with Fibonacci Levels",
-    yaxis_title="Price (USD)",
-    xaxis_title="Date",
-    hovermode="x unified"
-)
-st.plotly_chart(fig_fib, use_container_width=True)
-
+    fig_fib.update_layout(title=f"{crypto_choice.upper()} Price with Fibonacci Levels",
+                          yaxis_title="Price (USD)", xaxis_title="Date")
+    st.plotly_chart(fig_fib, use_container_width=True)
+else:
+    st.warning(f"No historical data available for {crypto_choice.upper()}.")
 # -------------------------
 # Explanation for users
 # -------------------------
