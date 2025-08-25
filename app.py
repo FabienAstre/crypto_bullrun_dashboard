@@ -421,14 +421,13 @@ if crypto_hist_filtered.empty:
     st.stop()
 
 # -------------------------
-# Fibonacci retracement levels
+# Fibonacci Levels
 # -------------------------
-high = crypto_hist_filtered["price"].max()
-low = crypto_hist_filtered["price"].min()
+st.markdown("---")
+st.header(f"📏 Fibonacci Levels for {crypto_input}")
 
-st.write(f"Analyzing {crypto_input} from {crypto_hist_filtered.index.min().date()} to {crypto_hist_filtered.index.max().date()}")
-st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
-
+high = crypto_hist_filtered['price'].max()
+low = crypto_hist_filtered['price'].min()
 fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
 fib_levels = [low + (high - low) * r for r in fib_ratios]
 
@@ -438,16 +437,9 @@ fib_df = pd.DataFrame({
 })
 st.dataframe(fib_df, use_container_width=True)
 
-# -------------------------
-# Plot chart with Fibonacci levels
-# -------------------------
+# Plot Fibonacci chart
 fig_fib = go.Figure()
-fig_fib.add_trace(go.Scatter(
-    x=crypto_hist_filtered.index,
-    y=crypto_hist_filtered["price"],
-    name=f"{crypto_input} Price",
-    line=dict(color="blue")
-))
+fig_fib.add_trace(go.Scatter(x=crypto_hist_filtered.index, y=crypto_hist_filtered["price"], name=f"{crypto_input} Price", line=dict(color="blue")))
 
 for lv, r in zip(fib_levels, fib_ratios):
     fig_fib.add_hline(
@@ -458,25 +450,49 @@ for lv, r in zip(fib_levels, fib_ratios):
         annotation_position="top left"
     )
 
-fig_fib.update_layout(
-    title=f"{crypto_input} Price with Fibonacci Levels",
-    yaxis_title="Price (USD)",
-    xaxis_title="Date",
-    hovermode="x unified"
-)
+fig_fib.update_layout(title=f"{crypto_input} Price with Fibonacci Levels", yaxis_title="Price (USD)", xaxis_title="Date", hovermode="x unified")
 st.plotly_chart(fig_fib, use_container_width=True)
 
+st.markdown("""
+### 📘 How to Use the Fibonacci Chart
+- Fibonacci retracement levels indicate potential support/resistance zones.
+- Common levels: 23.6%, 38.2%, 50%, 61.8%, 78.6%.
+- Price may retrace to a level before continuing trend.
+- Use levels for entries, stop-loss, or take-profit targets.
+- Combine with other indicators (RSI, MACD) for stronger signals.
+""")
+
 # -------------------------
-# Explanation for users
+# BTC & ETH Price Charts
 # -------------------------
 st.markdown("---")
-st.markdown("### 📘 How to Use the Fibonacci Chart")
-st.markdown("""
-- **Fibonacci retracement levels** are horizontal lines indicating potential support and resistance zones.
-- **Common levels:** 23.6%, 38.2%, 50%, 61.8%, 78.6%.
-- **Usage:**  
-  - Price often **retraces to a Fibonacci level** before continuing the trend.  
-  - Levels can be used for **entry, stop-loss, or take-profit targets**.  
-  - Combine with other indicators (RSI, MACD) for stronger signals.
-- **Customize dates** to analyze different market periods.  
-""")
+st.header("🛡️ BTC & ETH Price Charts")
+
+def plot_coin(coin_symbol, start, end):
+    url = crypto_csv_urls.get(coin_symbol)
+    df = load_csv(url)
+    df_filtered = df[(df.index >= pd.to_datetime(start)) & (df.index <= pd.to_datetime(end))]
+    if df_filtered.empty:
+        st.warning(f"No data for {coin_symbol}.")
+        return
+    fig = px.line(df_filtered, y='price', title=f"{coin_symbol} Price", labels={'price': 'Price USD', 'date':'Date'})
+    st.plotly_chart(fig, use_container_width=True)
+    return df_filtered
+
+btc_hist = plot_coin("BTC", start_date, end_date)
+eth_hist = plot_coin("ETH", start_date, end_date)
+
+# -------------------------
+# ETH/BTC Ratio Chart
+# -------------------------
+st.markdown("---")
+st.header("📈 ETH/BTC Ratio Over Time")
+if btc_hist is not None and eth_hist is not None:
+    df_ratio = pd.DataFrame({
+        'ETH/BTC': eth_hist['price'].values / btc_hist['price'].values,
+        'Date': eth_hist.index
+    })
+    fig_ratio = px.line(df_ratio, x='Date', y='ETH/BTC', title='ETH/BTC Ratio')
+    st.plotly_chart(fig_ratio, use_container_width=True)
+else:
+    st.warning("Cannot calculate ETH/BTC ratio. Data missing.")
