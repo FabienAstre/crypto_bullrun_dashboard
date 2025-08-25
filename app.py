@@ -419,14 +419,19 @@ def get_crypto_history(crypto_id, days=365):
 days_range = (end_date - start_date).days + 1
 crypto_hist = get_crypto_history(crypto_id, days=days_range)
 
-# Filter to selected date range
-crypto_hist = crypto_hist[(crypto_hist.index.date >= start_date) & (crypto_hist.index.date <= end_date)]
+# -------------------------
+# Filter by selected date range
+# -------------------------
+crypto_hist_filtered = crypto_hist[
+    (crypto_hist.index >= pd.to_datetime(start_date)) &
+    (crypto_hist.index <= pd.to_datetime(end_date))
+]
 
-if not crypto_hist.empty:
-    high = crypto_hist["price"].max()
-    low = crypto_hist["price"].min()
+if not crypto_hist_filtered.empty:
+    high = crypto_hist_filtered["price"].max()
+    low = crypto_hist_filtered["price"].min()
 
-    st.write(f"Analyzing {crypto_input} from {crypto_hist.index.min().date()} to {crypto_hist.index.max().date()}")
+    st.write(f"Analyzing {crypto_input} from {crypto_hist_filtered.index.min().date()} to {crypto_hist_filtered.index.max().date()}")
     st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
 
     # -------------------------
@@ -446,8 +451,8 @@ if not crypto_hist.empty:
     # -------------------------
     fig_fib = go.Figure()
     fig_fib.add_trace(go.Scatter(
-        x=crypto_hist.index,
-        y=crypto_hist["price"],
+        x=crypto_hist_filtered.index,
+        y=crypto_hist_filtered["price"],
         name=f"{crypto_input} Price",
         line=dict(color="blue")
     ))
