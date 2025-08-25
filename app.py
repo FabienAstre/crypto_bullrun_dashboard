@@ -352,68 +352,120 @@ if not alt_df.empty:
 else:
     st.warning("No altcoin data available for rotation heatmap.")
 # =========================
-# Fibonacci Levels Calculator
+# Fibonacci Levels Calculator (CryptoDataDownload CSV)
 # =========================
 st.markdown("---")
-st.header("📏 Fibonacci Levels Calculator")
+st.header("📏 Fibonacci Levels Calculator (Free CSV Data)")
 
-# Crypto selection dropdown
-crypto_choice = st.selectbox(
-    "Select Crypto for Fibonacci Calculation",
-    ["bitcoin", "ethereum"] + list(alt_df["Coin"].str.lower()) if not alt_df.empty else ["bitcoin", "ethereum"]
-)
+import io
 
-# Fetch historical data for selected crypto
+# -------------------------
+# Text input for coin symbol
+# -------------------------
+crypto_input = st.text_input(
+    "Enter coin symbol (e.g., BTC, ETH, XRP, DOGE):",
+    value="BTC"
+).upper()
+
+# -------------------------
+# Date range selection
+# -------------------------
+start_date = st.date_input("Start Date", value=datetime.date.today() - datetime.timedelta(days=365))
+end_date = st.date_input("End Date", value=datetime.date.today())
+if start_date > end_date:
+    st.error("Error: Start date must be before End date.")
+    st.stop()
+
+# -------------------------
+# Map symbols to CryptoDataDownload URLs
+# -------------------------
+crypto_csv_urls = {
+    "BTC": "https://www.cryptodatadownload.com/cdd/Binance_BTCUSDT_d.csv",
+    "ETH": "https://www.cryptodatadownload.com/cdd/Binance_ETHUSDT_d.csv",
+    "XRP": "https://www.cryptodatadownload.com/cdd/Binance_XRPUSDT_d.csv",
+    "DOGE": "https://www.cryptodatadownload.com/cdd/Binance_DOGEUSDT_d.csv"
+    # add more coins as needed
+}
+
+csv_url = crypto_csv_urls.get(crypto_input)
+if not csv_url:
+    st.warning(f"No CSV URL found for {crypto_input}. Add it manually in the code.")
+    st.stop()
+
+# -------------------------
+# Load CSV from URL
+# -------------------------
 @st.cache_data(ttl=3600)
-def get_crypto_history(crypto_id, days=365):
-    try:
-        r = requests.get(
-            f"https://api.coingecko.com/api/v3/coins/{crypto_id}/market_chart",
-            params={"vs_currency": "usd", "days": days, "interval": "daily"},
-            timeout=60
-        )
-        r.raise_for_status()
-        data = r.json()
-        df = pd.DataFrame(data["prices"], columns=["timestamp","price"])
-        df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
-        df.set_index("date", inplace=True)
-        return df[["price"]]
-    except:
+def load_csv(url):
+    r = requests.get(url)
+    if r.status_code != 200:
         return pd.DataFrame()
+    df = pd.read_csv(io.StringIO(r.text), skiprows=1)
+    df['date'] = pd.to_datetime(df['date'])
+    df.set_index('date', inplace=True)
+    df = df.sort_index()
+    return df[['close']].rename(columns={'close': 'price'})
 
-crypto_hist = get_crypto_history(crypto_choice)
-if not crypto_hist.empty:
-    high = crypto_hist["price"].max()
-    low = crypto_hist["price"].min()
+crypto_hist = load_csv(csv_url)
 
-    st.write(f"Analyzing {crypto_choice.upper()} from {crypto_hist.index.min().date()} to {crypto_hist.index.max().date()}")
-    st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
+# -------------------------
+# Filter by user-selected dates
+# -------------------------
+crypto_hist_filtered = crypto_hist[
+    (crypto_hist.index >= pd.to_datetime(start_date)) &
+    (crypto_hist.index <= pd.to_datetime(end_date))
+]
 
-    # Fibonacci levels (classic: 0.236, 0.382, 0.5, 0.618, 0.786)
-    fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-    fib_levels = [low + (high - low)*r for r in fib_ratios]
+if crypto_hist_filtered.empty:
+    st.warning(f"No historical data available for {crypto_input} in the selected date range.")
+    st.stop()
 
-    fib_df = pd.DataFrame({
-        "Fibonacci Ratio": fib_ratios,
-        "Level ($)": [round(lv,2) for lv in fib_levels]
-    })
+# -------------------------
+# Fibonacci retracement levels
+# -------------------------
+high = crypto_hist_filtered["price"].max()
+low = crypto_hist_filtered["price"].min()
 
-    st.dataframe(fib_df, use_container_width=True)
+st.write(f"Analyzing {crypto_input} from {crypto_hist_filtered.index.min().date()} to {crypto_hist_filtered.index.max().date()}")
+st.write(f"Price High: ${high:,.2f}, Low: ${low:,.2f}")
 
-    # Plot chart with Fibonacci levels
-    fig_fib = go.Figure()
-    fig_fib.add_trace(go.Scatter(x=crypto_hist.index, y=crypto_hist["price"], name=f"{crypto_choice.upper()} Price"))
+fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+fib_levels = [low + (high - low) * r for r in fib_ratios]
 
-    for lv, r in zip(fib_levels, fib_ratios):
-        fig_fib.add_hline(y=lv, line_dash="dash", line_color="orange", 
-                           annotation_text=f"Fib {r*100:.1f}%: ${lv:,.0f}",
-                           annotation_position="top left")
+fib_df = pd.DataFrame({
+    "Fibonacci Ratio": fib_ratios,
+    "Level ($)": [round(lv, 2) for lv in fib_levels]
+})
+st.dataframe(fib_df, use_container_width=True)
 
-    fig_fib.update_layout(title=f"{crypto_choice.upper()} Price with Fibonacci Levels",
-                          yaxis_title="Price (USD)", xaxis_title="Date")
-    st.plotly_chart(fig_fib, use_container_width=True)
-else:
-    st.warning(f"No historical data available for {crypto_choice.upper()}.")
+# -------------------------
+# Plot chart with Fibonacci levels
+# -------------------------
+fig_fib = go.Figure()
+fig_fib.add_trace(go.Scatter(
+    x=crypto_hist_filtered.index,
+    y=crypto_hist_filtered["price"],
+    name=f"{crypto_input} Price",
+    line=dict(color="blue")
+))
+
+for lv, r in zip(fib_levels, fib_ratios):
+    fig_fib.add_hline(
+        y=lv,
+        line_dash="dash",
+        line_color="orange",
+        annotation_text=f"Fib {r*100:.1f}%: ${lv:,.2f}",
+        annotation_position="top left"
+    )
+
+fig_fib.update_layout(
+    title=f"{crypto_input} Price with Fibonacci Levels",
+    yaxis_title="Price (USD)",
+    xaxis_title="Date",
+    hovermode="x unified"
+)
+st.plotly_chart(fig_fib, use_container_width=True)
+
 # -------------------------
 # Explanation for users
 # -------------------------
