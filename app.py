@@ -390,10 +390,10 @@ else:
     st.warning("No altcoin data available for rotation heatmap.")
 
 # =========================
-# Fibonacci Levels Calculator (CryptoDataDownload CSV)
+# Fibonacci Levels Calculator (CoinGecko API)
 # =========================
 st.markdown("---")
-st.header("📏 Fibonacci Levels Calculator (Free CSV Data)")
+st.header("📏 Fibonacci Levels Calculator (CoinGecko Data)")
 
 crypto_input = st.text_input("Enter coin symbol (e.g., BTC, ETH, XRP, DOGE):", value="BTC").upper()
 start_date = st.date_input("Start Date", value=datetime.date.today() - datetime.timedelta(days=365))
@@ -403,39 +403,47 @@ if start_date > end_date:
     st.error("Error: Start date must be before End date.")
     st.stop()
 
-crypto_csv_urls = {
-    "BTC": "https://www.cryptodatadownload.com/cdd/Binance_BTCUSDT_d.csv",
-    "ETH": "https://www.cryptodatadownload.com/cdd/Binance_ETHUSDT_d.csv",
-    "XRP": "https://www.cryptodatadownload.com/cdd/Binance_XRPUSDT_d.csv",
-    "DOGE": "https://www.cryptodatadownload.com/cdd/Binance_DOGEUSDT_d.csv",
-}
-
-csv_url = crypto_csv_urls.get(crypto_input)
-if not csv_url:
-    st.warning(f"No CSV URL found for {crypto_input}. Add it manually in the code.")
-    st.stop()
-
 @st.cache_data(ttl=3600)
-def load_csv(url):
+def load_coin_history(symbol: str):
     try:
-        r = requests.get(url, timeout=30)
+        coin_map = {
+            "BTC": "bitcoin",
+            "ETH": "ethereum",
+            "XRP": "ripple",
+            "DOGE": "dogecoin",
+        }
+        coin_id = coin_map.get(symbol.upper())
+        if not coin_id:
+            return pd.DataFrame()
+
+        r = requests.get(
+            f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart",
+            params={"vs_currency": "usd", "days": "max", "interval": "daily"},
+            timeout=60,
+        )
         if r.status_code != 200:
             return pd.DataFrame()
-        df = pd.read_csv(io.StringIO(r.text), skiprows=1)
-        df["date"] = pd.to_datetime(df["date"])
+
+        data = r.json()
+        prices = data.get("prices", [])
+        if not prices:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(prices, columns=["timestamp", "price"])
+        df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
         df.set_index("date", inplace=True)
         df = df.sort_index()
-        return df[["close"]].rename(columns={"close": "price"})
+        return df[["price"]]
     except Exception:
         return pd.DataFrame()
 
-crypto_hist = load_csv(csv_url)
+crypto_hist = load_coin_history(crypto_input)
 
 # ✅ Ensure index is datetime for filtering
 if not isinstance(crypto_hist.index, pd.DatetimeIndex):
     crypto_hist.index = pd.to_datetime(crypto_hist.index, errors="coerce")
 
-
+# Filter by selected range
 crypto_hist_filtered = crypto_hist[
     (crypto_hist.index >= pd.to_datetime(start_date)) & (crypto_hist.index <= pd.to_datetime(end_date))
 ]
