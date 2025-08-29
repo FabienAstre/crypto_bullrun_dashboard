@@ -1,5 +1,4 @@
 import math
-import time
 import requests
 import pandas as pd
 import streamlit as st
@@ -7,6 +6,7 @@ import datetime
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import io
 
 st.set_page_config(page_title="Crypto Bull Run Dashboard", page_icon="🚀", layout="wide")
 
@@ -116,7 +116,7 @@ def get_top_alts_safe(n=30):
 
 @st.cache_data(ttl=120)
 def get_rsi_macd_volume():
-    return 72, 0.002, False  # Placeholder: RSI, MACD hist divergence, volume divergence
+    return 72, 0.002, False  # Placeholder
 
 @st.cache_data(ttl=3600)
 def get_btc_history(days=365):
@@ -167,11 +167,11 @@ def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
         "Rotate to Alts": dom is not None and dom < dom_first and ethbtc is not None and ethbtc > ethbtc_break,
         "Profit Mode": dom is not None and (dom < dom_second or (fg_value is not None and fg_value>=80) or rsi>70 or macd_div or vol_div),
         "Full Exit Watch": dom is not None and dom < dom_second and fg_value is not None and fg_value>=80,
-        "MVRV Z-Score": True,
-        "SOPR LTH": True,
-        "Exchange Inflow": True,
-        "Pi Cycle Top": True,
-        "Funding Rate": True
+        "MVRV Z-Score": False,  # Placeholder
+        "SOPR LTH": False,      # Placeholder
+        "Exchange Inflow": False,  # Placeholder
+        "Pi Cycle Top": False,  # Placeholder
+        "Funding Rate": False   # Placeholder
     }
 
 # =========================
@@ -180,15 +180,19 @@ def build_signals(dom, ethbtc, fg_value, rsi, macd_div, vol_div):
 col1, col2, col3, col4 = st.columns(4)
 g = get_global()
 btc_dom = float(g["data"]["market_cap_percentage"]["btc"]) if g else None
-col1.metric("BTC Dominance (%)", f"{btc_dom:.2f}" if btc_dom else "N/A")
+col1.metric("BTC Dominance (%)", f"{btc_dom:.2f}" if btc_dom is not None else "N/A")
 ethbtc = get_ethbtc()
-col2.metric("ETH/BTC", f"{ethbtc:.6f}" if ethbtc else "N/A")
+col2.metric("ETH/BTC", f"{ethbtc:.6f}" if ethbtc is not None else "N/A")
 fg_value, fg_label = get_fear_greed()
-col3.metric("Fear & Greed", f"{fg_value} ({fg_label})" if fg_value else "N/A")
+col3.metric("Fear & Greed", f"{fg_value} ({fg_label})" if fg_value is not None else "N/A")
 prices = get_prices_usd(["bitcoin","ethereum"])
 btc_price = prices.get("bitcoin",{}).get("usd")
 eth_price = prices.get("ethereum",{}).get("usd")
-col4.metric("BTC / ETH ($)", f"{btc_price:,.0f} / {eth_price:,.0f}" if btc_price and eth_price else "N/A")
+if btc_price is not None and eth_price is not None:
+    col4.metric("BTC / ETH ($)", f"{btc_price:,.0f} / {eth_price:,.0f}")
+else:
+    col4.metric("BTC / ETH ($)", "N/A")
+
 rsi, macd_div, vol_div = get_rsi_macd_volume()
 sig = build_signals(btc_dom, ethbtc, fg_value, rsi, macd_div, vol_div)
 st.markdown("---")
@@ -207,12 +211,13 @@ signal_descriptions = {
     "Rotate to Alts": "Strong rotation signal → move funds into altcoins.",
     "Profit Mode": "Suggests scaling out of positions / taking profit.",
     "Full Exit Watch": "Extreme signal → consider exiting major positions.",
-    "MVRV Z-Score": "BTC historically overvalued when MVRV Z > 7.",
-    "SOPR LTH": "Long-term holder SOPR > 1.5 → high profit taking.",
-    "Exchange Inflow": "Exchange inflows spike → whales moving BTC to exchanges.",
-    "Pi Cycle Top": "MA111 > MA350 → potential market top.",
-    "Funding Rate": "Perpetual funding > 0.2% long → market over-leveraged."
+    "MVRV Z-Score": "BTC historically overvalued when MVRV Z > 7 (placeholder).",
+    "SOPR LTH": "Long-term holder SOPR > 1.5 → profit taking (placeholder).",
+    "Exchange Inflow": "Exchange inflows spike → whales moving BTC (placeholder).",
+    "Pi Cycle Top": "MA111 > MA350 → potential top (placeholder).",
+    "Funding Rate": "Funding > 0.2% → over-leveraged market (placeholder)."
 }
+
 cols_per_row = 3
 signal_items = list(signal_descriptions.items())
 for i in range(0, len(signal_items), cols_per_row):
@@ -242,56 +247,36 @@ else:
     st.warning("ETH/BTC history data not available.")
 
 # =========================
-# BTC Price & Resistance Levels (Zoom enabled, 200k removed)
+# BTC Price & Resistance Levels
 # =========================
 st.markdown("---")
 st.header("🛡️ BTC Price & Resistance Levels")
 
-# Removed 200k, keeping only valid resistances
 btc_resistances = [114000, 120000, 123000]
 
 if not btc_hist.empty:
     fig_btc = px.line(btc_hist, y='price', title="BTC Price (1-Year) with Resistance Levels")
-
-    # Add horizontal resistance lines
     for level in btc_resistances:
-        fig_btc.add_hline(
-            y=level, 
-            line_dash="dash", 
-            line_color="red",
-            annotation_text=f"Resistance ${level:,.0f}", 
-            annotation_position="top left"
-        )
-
-    # Labels + Zooming enabled
+        fig_btc.add_hline(y=level, line_dash="dash", line_color="red", annotation_text=f"Resistance ${level:,.0f}", annotation_position="top left")
     fig_btc.update_yaxes(title="Price (USD)")
     fig_btc.update_xaxes(title="Date")
-    fig_btc.update_layout(
-        xaxis=dict(rangeslider=dict(visible=True)),  # adds zoomable range slider
-        dragmode="zoom"  # allows zooming by dragging
-    )
-
+    fig_btc.update_layout(xaxis=dict(rangeslider=dict(visible=True)), dragmode="zoom")
     st.plotly_chart(fig_btc, use_container_width=True)
 else:
     st.warning("BTC historical price data not available.")
-
 
 # =========================
 # Profit Ladder Planner
 # =========================
 st.markdown("---")
 st.header("🎯 Profit-Taking Ladder")
+
 def build_ladder(entry, step_pct, sell_pct, max_steps):
     rows = []
     if entry <= 0: return pd.DataFrame(rows)
     for i in range(1,max_steps+1):
         target = entry*(1+step_pct/100.0)**i
-        rows.append({
-            "Step #": i,
-            "Target Price": round(target,2),
-            "Gain from Entry (%)": round((target/entry-1)*100,2),
-            "Sell This Step (%)": sell_pct
-        })
+        rows.append({"Step #": i, "Target Price": round(target,2), "Gain from Entry (%)": round((target/entry-1)*100,2), "Sell This Step (%)": sell_pct})
     return pd.DataFrame(rows)
 
 btc_ladder = build_ladder(entry_btc, ladder_step_pct, sell_pct_per_step, max_ladder_steps)
@@ -303,13 +288,14 @@ with cR: st.subheader("ETH Ladder"); st.dataframe(eth_ladder,use_container_width
 # =========================
 # Trailing Stop Guidance
 # =========================
-if use_trailing and btc_price:
+if use_trailing and btc_price is not None:
     st.markdown("---")
     st.subheader("🛡️ Trailing Stop Guidance")
     btc_stop = round(btc_price*(1-trail_pct/100.0),2)
-    eth_stop = round(eth_price*(1-trail_pct/100.0),2) if eth_price else None
+    eth_stop = round(eth_price*(1-trail_pct/100.0),2) if eth_price is not None else None
     st.write(f"- Suggested BTC stop: ${btc_stop:,.2f}")
-    if eth_stop: st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
+    if eth_stop is not None:
+        st.write(f"- Suggested ETH stop: ${eth_stop:,.2f}")
 
 # =========================
 # Altcoin Heatmap
@@ -341,158 +327,4 @@ if not alt_df.empty:
             "<b>%{customdata[0]}</b><br>"
             "Market Cap: %{value:.2f} B<br>"
             "Price: $%{customdata[1]:,.4f}<br>"
-            "24h: %{customdata[2]:.2f}%<br>"
-            "7d: %{customdata[3]:.2f}%<br>"
-            "Rotation: %{customdata[4]}<extra></extra>"
-        ),
-        customdata=np.stack([alt_df["Name"], alt_df["Price ($)"], alt_df["24h %"], alt_df["7d %"], alt_df["Rotation"]], axis=-1)
-    ))
-    fig_treemap.update_layout(margin=dict(t=50,l=25,r=25,b=25), title="Altcoin Rotation by Market Cap & 7d Performance")
-    st.plotly_chart(fig_treemap, use_container_width=True)
-else:
-    st.warning("No altcoin data available for rotation heatmap.")
-# =========================
-# Fibonacci Levels Calculator (CryptoDataDownload CSV)
-# =========================
-st.markdown("---")
-st.header("📏 Fibonacci Levels Calculator (Free CSV Data)")
-
-import io
-
-# -------------------------
-# Text input for coin symbol
-# -------------------------
-crypto_input = st.text_input(
-    "Enter coin symbol (e.g., BTC, ETH, XRP, DOGE):",
-    value="BTC"
-).upper()
-
-# -------------------------
-# Date range selection
-# -------------------------
-start_date = st.date_input("Start Date", value=datetime.date.today() - datetime.timedelta(days=365))
-end_date = st.date_input("End Date", value=datetime.date.today())
-if start_date > end_date:
-    st.error("Error: Start date must be before End date.")
-    st.stop()
-
-# -------------------------
-# Map symbols to CryptoDataDownload URLs
-# -------------------------
-crypto_csv_urls = {
-    "BTC": "https://www.cryptodatadownload.com/cdd/Binance_BTCUSDT_d.csv",
-    "ETH": "https://www.cryptodatadownload.com/cdd/Binance_ETHUSDT_d.csv",
-    "XRP": "https://www.cryptodatadownload.com/cdd/Binance_XRPUSDT_d.csv",
-    "DOGE": "https://www.cryptodatadownload.com/cdd/Binance_DOGEUSDT_d.csv"
-    # add more coins as needed
-}
-
-csv_url = crypto_csv_urls.get(crypto_input)
-if not csv_url:
-    st.warning(f"No CSV URL found for {crypto_input}. Add it manually in the code.")
-    st.stop()
-
-# -------------------------
-# Load CSV from URL
-# -------------------------
-@st.cache_data(ttl=3600)
-def load_csv(url):
-    r = requests.get(url)
-    if r.status_code != 200:
-        return pd.DataFrame()
-    df = pd.read_csv(io.StringIO(r.text), skiprows=1)
-    df['date'] = pd.to_datetime(df['date'])
-    df.set_index('date', inplace=True)
-    df = df.sort_index()
-    return df[['close']].rename(columns={'close': 'price'})
-
-crypto_hist = load_csv(csv_url)
-
-# -------------------------
-# Filter by user-selected dates
-# -------------------------
-crypto_hist_filtered = crypto_hist[
-    (crypto_hist.index >= pd.to_datetime(start_date)) &
-    (crypto_hist.index <= pd.to_datetime(end_date))
-]
-
-if crypto_hist_filtered.empty:
-    st.warning(f"No historical data available for {crypto_input} in the selected date range.")
-    st.stop()
-
-# -------------------------
-# Fibonacci Levels
-# -------------------------
-st.markdown("---")
-st.header(f"📏 Fibonacci Levels for {crypto_input}")
-
-high = crypto_hist_filtered['price'].max()
-low = crypto_hist_filtered['price'].min()
-fib_ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-fib_levels = [low + (high - low) * r for r in fib_ratios]
-
-fib_df = pd.DataFrame({
-    "Fibonacci Ratio": fib_ratios,
-    "Level ($)": [round(lv, 2) for lv in fib_levels]
-})
-st.dataframe(fib_df, use_container_width=True)
-
-# Plot Fibonacci chart
-fig_fib = go.Figure()
-fig_fib.add_trace(go.Scatter(x=crypto_hist_filtered.index, y=crypto_hist_filtered["price"], name=f"{crypto_input} Price", line=dict(color="blue")))
-
-for lv, r in zip(fib_levels, fib_ratios):
-    fig_fib.add_hline(
-        y=lv,
-        line_dash="dash",
-        line_color="orange",
-        annotation_text=f"Fib {r*100:.1f}%: ${lv:,.2f}",
-        annotation_position="top left"
-    )
-
-fig_fib.update_layout(title=f"{crypto_input} Price with Fibonacci Levels", yaxis_title="Price (USD)", xaxis_title="Date", hovermode="x unified")
-st.plotly_chart(fig_fib, use_container_width=True)
-
-st.markdown("""
-### 📘 How to Use the Fibonacci Chart
-- Fibonacci retracement levels indicate potential support/resistance zones.
-- Common levels: 23.6%, 38.2%, 50%, 61.8%, 78.6%.
-- Price may retrace to a level before continuing trend.
-- Use levels for entries, stop-loss, or take-profit targets.
-- Combine with other indicators (RSI, MACD) for stronger signals.
-""")
-
-# -------------------------
-# BTC & ETH Price Charts
-# -------------------------
-st.markdown("---")
-st.header("🛡️ BTC & ETH Price Charts")
-
-def plot_coin(coin_symbol, start, end):
-    url = crypto_csv_urls.get(coin_symbol)
-    df = load_csv(url)
-    df_filtered = df[(df.index >= pd.to_datetime(start)) & (df.index <= pd.to_datetime(end))]
-    if df_filtered.empty:
-        st.warning(f"No data for {coin_symbol}.")
-        return
-    fig = px.line(df_filtered, y='price', title=f"{coin_symbol} Price", labels={'price': 'Price USD', 'date':'Date'})
-    st.plotly_chart(fig, use_container_width=True)
-    return df_filtered
-
-btc_hist = plot_coin("BTC", start_date, end_date)
-eth_hist = plot_coin("ETH", start_date, end_date)
-
-# -------------------------
-# ETH/BTC Ratio Chart
-# -------------------------
-st.markdown("---")
-st.header("📈 ETH/BTC Ratio Over Time")
-if btc_hist is not None and eth_hist is not None:
-    df_ratio = pd.DataFrame({
-        'ETH/BTC': eth_hist['price'].values / btc_hist['price'].values,
-        'Date': eth_hist.index
-    })
-    fig_ratio = px.line(df_ratio, x='Date', y='ETH/BTC', title='ETH/BTC Ratio')
-    st.plotly_chart(fig_ratio, use_container_width=True)
-else:
-    st.warning("Cannot calculate ETH/BTC ratio. Data missing.")
+            "24h: %{customdata[2]:.2f}%
