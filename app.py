@@ -431,6 +431,11 @@ def load_csv(url):
 
 crypto_hist = load_csv(csv_url)
 
+# ✅ Ensure index is datetime for filtering
+if not isinstance(crypto_hist.index, pd.DatetimeIndex):
+    crypto_hist.index = pd.to_datetime(crypto_hist.index, errors="coerce")
+
+
 crypto_hist_filtered = crypto_hist[
     (crypto_hist.index >= pd.to_datetime(start_date)) & (crypto_hist.index <= pd.to_datetime(end_date))
 ]
